@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Username -->
+    <TextView
+        android:id="@+id/tvUserName"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#111111"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Post Content -->
+    <TextView
+        android:id="@+id/tvContent"
+        android:textSize="14sp"
+        android:textColor="#444444"
+        android:layout_marginTop="6dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Post Image -->
+    <ImageView
+        android:id="@+id/ivPostImage"
+        android:layout_width="match_parent"
+        android:layout_height="300dp"
+        android:scaleType="centerCrop"
+        android:layout_marginTop="10dp"
+        android:visibility="gone" />
+
+    <!-- Likes Section (View Only) -->
+    <LinearLayout
+        android:id="@+id/likesLayout"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="8dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="4dp"
+        android:background="?attr/selectableItemBackground">
+
+        <ImageView
+            android:id="@+id/ivLikeIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_like_filled"
+            android:contentDescription="Likes icon"
+            android:tint="#FF0000" />
+
+
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=" likes"
+            android:textSize="12sp"
+            android:layout_marginStart="2dp"
+            android:textColor="#666666" />
+    </LinearLayout>
+
+    <!-- Comments List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvComments"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="16dp" />
+
+    <!-- Add Comment -->
+    <LinearLayout
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:background="#EEEEEE"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <EditText
+            android:id="@+id/etComment"
+            android:layout_weight="1"
+            android:hint="Add a comment..."
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:background="@android:color/transparent"
+            android:padding="6dp"
+            android:textColor="#111111"
+            android:textColorHint="#888888" />
+
+        <TextView
+            android:id="@+id/btnSendComment"
+            android:text="Send"
+            android:textStyle="bold"
+            android:textColor="#0066FF"
+            android:layout_marginStart="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>🎤 Wzzafak AI Interview</title>
+</head>
+<body>
+  <h2>🎤 Live Interview Chat</h2>
+
+  <!-- CV Upload -->
+  <div style="margin-bottom:20px;">
+    <h3>📄 Upload Your CV</h3>
+    <input type="file" id="cvFile" accept=".pdf,.doc,.docx,.txt">
+    <input type="number" id="userId" placeholder="Enter your user ID" style="width:180px;">
+    <button onclick="uploadCV()">Upload CV</button>
+    <div id="uploadStatus"></div>
+  </div>
+
+  <!-- Chat Section -->
+  <div id="chat" style="border:1px solid #ccc;padding:10px;height:300px;overflow:auto;"></div>
+  <input id="msg" placeholder="Type your answer..." style="width:80%">
+  <button onclick="send()">Send</button>
+
+  <script>
+    let socket = null;
+    const chat = document.getElementById("chat");
+
+    async function uploadCV() {
+      const fileInput = document.getElementById("cvFile");
+      const userId = document.getElementById("userId").value;
+      const statusDiv = document.getElementById("uploadStatus");
+
+      if (!fileInput.files.length) {
+        alert("Please select a CV file first.");
+        return;
+      }
+      if (!userId) {
+        alert("Please enter your user ID.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+      formData.append("user_id", userId);
+
+      statusDiv.innerHTML = "⏳ Uploading and analyzing CV...";
+
+      try {
+        const resp = await fetch("http://localhost:8089/v1/cv/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json();
+        console.log(data);
+
+        statusDiv.innerHTML = `<span style="color:green;">✅ ${data.message}</span><br><b>Field:</b> ${data.field}<br><b>Analysis:</b> ${data.analysis}`;
+        startInterview(userId);
+      } catch (err) {
+        console.error("Upload error:", err);
+        statusDiv.innerHTML = `<span style="color:red;">❌ Upload failed: ${err.message}</span>`;
+      }
+    }
+
+    function startInterview(userId) {
+      socket = new WebSocket(`ws://localhost:8089/v1/live-interview?user_id=${userId}`);
+      socket.onopen = () => {
+        chat.innerHTML = "<div>🟢 Connected to Interview AI</div>";
+      };
+      socket.onmessage = (e) => {
+        chat.innerHTML += `<div><b>AI:</b> ${e.data}</div>`;
+        chat.scrollTop = chat.scrollHeight;
+      };
+      socket.onclose = () => {
+        chat.innerHTML += "<div>🔴 Disconnected from Interview AI</div>";
+      };
+      socket.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        chat.innerHTML += "<div style='color:red;'>⚠️ Connection error.</div>";
+      };
+    }
+
+    function send() {
+      const msg = document.getElementById("msg").value;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        alert("The interview hasn't started yet.");
+        return;
+      }
+      chat.innerHTML += `<div><b>You:</b> ${msg}</div>`;
+      socket.send(msg);
+      document.getElementById("msg").value = "";
+      chat.scrollTop = chat.scrollHeight;
+    }
+  </script>
+</body>
+</html>

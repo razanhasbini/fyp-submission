@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <color android:name="primary_blue">#4A90E2</color>
+    <color android:name="primary_green">#2ECC71</color>
+    <color android:name="primary_purple">#9B59B6</color>
+    <color android:name="success_green">#27AE60</color>
+    <color android:name="warning_orange">#F39C12</color>
+    <color android:name="accent_orange">#E67E22</color>
+    <color android:name="white_80">#CCFFFFFF</color>
+</selector>

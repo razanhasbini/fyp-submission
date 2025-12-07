@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="8dp"
+    android:background="#FFFFFF">
+
+    <!-- Title with Search Icon -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="WazzafakAI"
+            android:textColor="@color/blue"
+            android:textStyle="bold"
+            android:textSize="18sp" />
+
+        <ImageView
+            android:id="@+id/ivSearchIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/search"
+            android:contentDescription="Search"
+            app:tint="#2196F3"
+            android:clickable="true"
+            android:focusable="true"/>
+    </LinearLayout>
+
+    <!-- Create Post -->
+    <LinearLayout
+        android:id="@+id/llCreatePost"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:gravity="center_vertical"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="@drawable/rounded_input_background"
+        android:foreground="?android:attr/selectableItemBackground">
+
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/ivProfile"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/profile"
+            android:layout_marginEnd="10dp"
+            app:civ_border_width="1dp"
+            app:civ_border_color="#E0E0E0" />
+
+        <TextView
+            android:id="@+id/tvPlaceholder"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Share your interview experience..."
+            android:textColor="#888888"
+            android:textSize="14sp"
+            android:layout_weight="1" />
+
+        <ImageView
+            android:id="@+id/ivPhoto"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/photo"
+            android:contentDescription="Photo"
+            app:tint="#4CAF50" />
+    </LinearLayout>
+
+    <!-- For You / Following Tabs -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/llForYouTab"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:paddingVertical="6dp">
+
+            <TextView
+                android:id="@+id/tvForYou"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="For you"
+                android:textColor="#2196F3"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <View
+                android:id="@+id/vForYouIndicator"
+                android:layout_width="32dp"
+                android:layout_height="3dp"
+                android:background="#2196F3"
+                android:layout_marginTop="4dp"
+                android:visibility="visible" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/llFollowingTab"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:paddingVertical="6dp">
+
+            <TextView
+                android:id="@+id/tvFollowing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Following"
+                android:textColor="#666666"
+                android:textSize="14sp" />
+
+            <View
+                android:id="@+id/vFollowingIndicator"
+                android:layout_width="32dp"
+                android:layout_height="3dp"
+                android:background="#E0E0E0"
+                android:layout_marginTop="4dp"
+                android:visibility="invisible" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

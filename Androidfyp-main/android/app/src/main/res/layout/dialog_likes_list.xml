@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_dialog_rounded"
+    android:padding="18dp">
+
+    <!-- 🌟 Header -->
+    <TextView
+        android:id="@+id/tvDialogTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Liked by"
+        android:textSize="19sp"
+        android:textStyle="bold"
+        android:textColor="@color/blue_dark"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:paddingBottom="10dp"
+        android:letterSpacing="0.03"
+        android:shadowColor="#22000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="1.2" />
+
+    <!-- ✨ Divider -->
+    <View
+        android:layout_width="60dp"
+        android:layout_height="3dp"
+        android:background="@drawable/divider_gradient"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="12dp"
+        android:alpha="0.8" />
+
+    <!-- ❤️ Likes List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvLikes"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:overScrollMode="never"
+        android:scrollbars="vertical"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp"
+        android:fadeScrollbars="true"
+        android:scrollbarThumbVertical="@drawable/scrollbar_thumb"
+        android:scrollbarSize="3dp" />
+
+</LinearLayout>

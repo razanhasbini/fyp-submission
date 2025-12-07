@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Primary Base Colors -->
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+    <color name="grey">#FF888888</color> <!-- Consider renaming to "gray" for consistency -->
+    <color name="light_gray">#FFDDDDDD</color>
+    <color name="medium_gray">#FF757575</color> <!-- For body/subtitle text -->
+
+    <!-- Blue Palette -->
+    <color name="blue">#2196F3</color> <!-- Primary blue -->
+    <color name="blue_light">#64B5F6</color> <!-- Light blue background -->
+    <color name="blue_dark">#1976D2</color> <!-- Medium-dark blue for icons or headers -->
+    <color name="dark_blue">#0D47A1</color> <!-- Deep blue for titles -->
+
+    <!-- Green Palette -->
+    <color name="green">#4CAF50</color> <!-- Base green -->
+
+    <color name="primary_green_light">#81C784</color> <!-- Light green background -->
+    <color name="primary_green_dark">#388E3C</color> <!-- Dark green accent -->
+
+    <!-- Red Palette -->
+    <color name="red">#F44336</color> <!-- Base red -->
+
+    <color name="primary_red_light">#E57373</color> <!-- Light red background -->
+    <color name="primary_red_dark">#D32F2F</color> <!-- Dark red accent -->
+
+    <!-- Divider / Border Color -->
+    <color name="divider">#BDBDBD</color> <!-- Subtle gray for separators -->
+
+    <!-- Text Hierarchy (Optional for clarity and flexibility) -->
+    <color name="text_primary">#212121</color> <!-- Default body text -->
+    <color name="text_secondary">#757575</color> <!-- Secondary (description) text -->
+
+</resources>

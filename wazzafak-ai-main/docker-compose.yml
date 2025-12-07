@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Interview AI Backend - Connected to Supabase
+  interview_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: interview_backend
+    environment:
+      # Supabase PostgreSQL Connection String
+      # Format: postgres://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+      # Get your password from: Supabase Dashboard > Settings > Database > Connection string
+      # Replace [YOUR_SUPABASE_DB_PASSWORD] with your actual database password
+      # 
+      # Option 1: Set via .env file (recommended)
+      # Create .env file with: DATABASE_URL=postgres://postgres.npeusanizvcyjwsgbhfn:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?sslmode=require
+      #
+      # Option 2: Set directly here (replace [YOUR-PASSWORD])
+      # Using CONNECTION POOLING format (port 6543) - recommended for production
+      # IMPORTANT: Replace with your own credentials before running!
+      # Get from: Supabase Dashboard > Settings > Database > Connection string > Connection pooling
+      # URL-encode special characters in password (? → %3F, @ → %40, # → %23)
+      - DATABASE_URL=postgresql://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-YOUR_REGION.pooler.supabase.com:6543/postgres?sslmode=require
+      - USE_MOCK=0
+      # Get from: https://platform.openai.com/api-keys
+      - LLM_API_KEY=sk-your-openai-api-key-here
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - CHAT_MODEL=${CHAT_MODEL:-gpt-4o-mini}
+      - EVAL_MODEL=${EVAL_MODEL:-gpt-4o}
+      - PORT=8089
+    ports:
+      - "8089:8089"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: interview_network
+

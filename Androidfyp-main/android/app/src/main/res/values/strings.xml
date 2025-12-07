@@ -1,0 +1,104 @@
+<resources>
+    <string name="app_name">Wazzafak AI</string>
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="welcome">Welcome</string>
+    <string name="sign_in_to_continue_your_journey">Sign in to continue</string>
+    <string name="email_address">Email Address</string>
+    <string name="password">Password</string>
+    <string name="remember_me">Remember me</string>
+    <string name="forgot_password">Forgot Password?</string>
+    <string name="sign_in">Sign In</string>
+    <string name="or_continue_with">or continue with</string>
+    <string name="google">Google</string>
+    <string name="don_t_have_an_account">Don\'t have an account?</string>
+    <string name="sign_up">Sign Up</string>
+    <string name="job_position">Job Position</string>
+    <string name="already_have_an_account">Already have an account?</string>
+    <string name="remember_your_password">Remember your password?</string>
+    <string name="wazzafak_ai">Wazzafak AI</string>
+    <string name="recent_sessions">Recent Session</string>
+    <string name="avg_score">Avg Score</string>
+    <string name="back">Back</string>
+    <string name="change_photo">Change Photo</string>
+    <string name="change_profile_photo">Change Profile Photo</string>
+    <string name="full_name">Full Name</string>
+    <string name="enter_your_name">Enter your name</string>
+    <string name="role">Role</string>
+    <string name="locked_field">Locked Field</string>
+    <string name="role_cannot_be_changed">Role cannot be changed</string>
+    <string name="save_changes">Save Changes</string>
+    <string name="cancel">Cancel</string>
+    <string name="sessions">Sessions</string>
+    <string name="profile">Profile</string>
+    <string name="technical_interview">Technical Interview</string>
+    <string name="behaviral_interview">Behaviral interview</string>
+    <string name="cv_analysis">CV Analysis</string>
+    <string name="view_detailed_report">View detailed report</string>
+    <string name="see_personalized_feedback_amp_suggestions"><![CDATA[See personalized feedback & suggestions]]></string>
+    <string name="your_posts">Your Posts</string>
+    <string name="followers">Followers</string>
+    <string name="following">Following</string>
+    <string name="edit_profile">Edit Profile</string>
+    <string name="view_your_performance_summary">View your performance summary</string>
+    <string name="practice_session">Practice Session</string>
+
+    <string-array name="jobpositions">
+        <item>Software Engineering</item>
+        <item>Business Administration</item>
+        <item>Mechanical Engineering</item>
+        <item>Graphic Design</item>
+        <item>Marketing</item>
+    </string-array>
+
+    <string-array name="software_engineering_specializations">
+        <item>Full Stack</item>
+        <item>Mobile App</item>
+        <item>Backend</item>
+        <item>Frontend</item>
+    </string-array>
+
+    <string-array name="mobile_app_types">
+        <item>Native</item>
+        <item>Cross</item>
+    </string-array>
+
+    <string-array name="native_mobile_options">
+        <item>Android</item>
+        <item>iOS</item>
+        <item>Both</item>
+    </string-array>
+
+    <string-array name="cross_mobile_options">
+        <item>Flutter</item>
+        <item>React Native</item>
+        <item>Both</item>
+    </string-array>
+
+    <string-array name="business_administration_specializations">
+        <item>HR Management</item>
+        <item>Finance</item>
+        <item>Operations</item>
+        <item>Marketing</item>
+    </string-array>
+
+    <string-array name="mechanical_engineering_specializations">
+        <item>Automotive</item>
+        <item>Aerospace</item>
+        <item>Manufacturing</item>
+    </string-array>
+
+    <string-array name="graphic_design_specializations">
+        <item>UI/UX</item>
+        <item>Branding</item>
+        <item>Illustration</item>
+    </string-array>
+
+    <string-array name="marketing_specializations">
+        <item>Digital Marketing</item>
+        <item>Content Marketing</item>
+        <item>SEO</item>
+    </string-array>
+    <string name="post_image">Post image</string>
+    <string name="user_name">User Name</string>
+
+</resources>

@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="6dp"
+    android:backgroundTint="@android:color/white">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- 🧑‍💼 Header: User Info -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="10dp">
+
+            <!-- 👤 Profile Photo -->
+            <de.hdodenhof.circleimageview.CircleImageView
+                android:id="@+id/ivUserPhoto"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:src="@drawable/ic_profile_placeholder" />
+
+            <!-- 👇 Username + Time -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="10dp">
+
+                <TextView
+                    android:id="@+id/tvUserName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textStyle="bold"
+                    android:textSize="15sp"
+                    android:textColor="#000" />
+
+                <TextView
+                    android:id="@+id/tvPostTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Just now"
+                    android:textSize="12sp"
+                    android:textColor="#888888" />
+            </LinearLayout>
+
+            <!-- ✅ Follow Button -->
+            <TextView
+                android:id="@+id/tvFollow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="+ Follow"
+                android:textColor="#2196F3"
+                android:textStyle="bold"
+                android:textSize="13sp"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="5dp"
+                android:background="@drawable/follow_bg"
+                android:layout_marginStart="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless" />
+
+            <!-- 🗑️ Delete Button (Visible only if isOwner=true) -->
+            <ImageView
+                android:id="@+id/btnDeletePost"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_delete"
+                android:layout_marginStart="10dp"
+                android:visibility="gone"
+                android:contentDescription="Delete Post"
+                app:tint="#DD0000"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless" />
+        </LinearLayout>
+
+        <!-- 📝 Post Content -->
+        <TextView
+            android:id="@+id/tvContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="15sp"
+            android:textColor="#333333"
+            android:paddingBottom="8dp" />
+
+        <!-- 🖼️ Post Image -->
+        <ImageView
+            android:id="@+id/ivPhoto"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            android:background="#EAEAEA"
+            android:layout_marginBottom="8dp"
+            android:contentDescription="@string/post_image" />
+
+        <!-- ─ Divider ─ -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#E0E0E0"
+            android:layout_marginVertical="4dp" />
+
+        <!-- ❤️💬 Actions Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp"
+            android:gravity="center_vertical">
+
+            <!-- ❤️ Like Section -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:paddingHorizontal="12dp">
+
+                <ImageView
+                    android:id="@+id/ivLike"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_like_outline"
+                    android:layout_marginEnd="12dp"
+                    android:padding="4dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackgroundBorderless" />
+
+                <TextView
+                    android:id="@+id/tvLikeCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textSize="14sp"
+                    android:textColor="#555"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="8dp"
+                    android:foreground="?attr/selectableItemBackgroundBorderless" />
+            </LinearLayout>
+
+            <!-- 💬 Comment Section -->
+            <LinearLayout
+                android:id="@+id/btnComment"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:paddingHorizontal="12dp">
+
+                <ImageView
+                    android:id="@+id/ivComment"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_comment_outline"
+                    android:layout_marginEnd="12dp"
+                    android:padding="4dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackgroundBorderless" />
+
+                <TextView
+                    android:id="@+id/tvCommentCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textSize="14sp"
+                    android:textColor="#555"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="8dp"
+                    android:foreground="?attr/selectableItemBackgroundBorderless" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

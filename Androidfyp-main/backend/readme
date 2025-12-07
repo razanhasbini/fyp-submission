@@ -1,0 +1,58 @@
+HTTP Request → Handler → Service → Repository → Database → Repository → Service → Handler → HTTP Response
+Architecture Overview
+
+Handlers receive API requests, perform basic input validation, and pass data to the service layer.
+
+Models define data structure and use ORM (like GORM) to map database tables to code objects, making database operations simpler.
+
+Service layer contains business logic, processing and validating data before calling the repository.
+
+Repositories interact directly with the database, executing queries without adding business logic.
+
+myproject/
+├── internal/               // Application core code (private to the module)
+│   ├── handler/            // HTTP handlers: receive requests, validate input, call services
+│   ├── service/            // Business logic layer: process and validate data before repo calls
+│   ├── repository/         // Data access layer: interacts with database, executes queries
+│   ├── model/              // Data models: define structure and ORM mappings (e.g., GORM structs)
+│   ├── middleware/         // Middleware: cross-cutting concerns like authentication, logging
+│   └── database/           // Database connection setup and management (e.g., GORM initialization)
+├── certs/                  // SSL certificates or security keys (if any)
+├── utils/                  // Utility/helper functions used across the app
+├── config/                 // Configuration management: load app configs (env vars, files, etc.)
+├── go.mod                  // Go module definition file
+├── go.sum                  // Dependency checksums file
+└── main.go                 // Application entry point (starts server, initializes dependencies)
+
+
+
+#retro fit
+
+
+1. **Retrofit**
+
+   * High-level library to make API calls easy.
+   * Turns interface methods into HTTP requests.
+
+2. **ApiService (Interface)**
+
+   * Defines API endpoints with annotations (`@GET`, `@POST`).
+   * Just a description; no real code.
+
+3. **OkHttpClient**
+
+   * The class that we take from it an instance that actually sends HTTP requests and receives responses.
+   * Handles networking, retries, caching, interceptors.
+
+4. **RetrofitClient**
+
+   * Builds and configures Retrofit with base URL, converters, and OkHttpClient(instance).
+   * Provides an `ApiService` instance.
+
+5. **Interceptors**
+
+  An interceptor is a component that intercepts (catches) every HTTP request before it’s sent to the server,
+   and every HTTP response before it reaches your app code.
+
+---
+

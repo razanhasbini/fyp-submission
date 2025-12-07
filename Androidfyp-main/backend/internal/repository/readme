@@ -1,0 +1,1 @@
+Repositories handle direct communication with the database, focusing only on executing queries without performing validation or business logic.

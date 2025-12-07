@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#F7F7F7">
+
+    <!-- 🔍 Modern Search Bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_search"
+        android:paddingHorizontal="12dp">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/search"
+            app:tint="#757575" />
+
+        <EditText
+            android:id="@+id/etUsernameSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Search username..."
+            android:textSize="14sp"
+            android:paddingStart="8dp"
+            android:background="@android:color/transparent"
+            android:singleLine="true"
+            android:imeOptions="actionSearch" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSearchUser"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="Search"
+            android:textSize="13sp"
+            app:cornerRadius="20dp"
+            app:backgroundTint="@color/blue"
+            android:textColor="@android:color/white"
+            android:textAllCaps="false" />
+    </LinearLayout>
+
+
+    <!-- Space -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="12dp" />
+
+    <!-- 👤 User Card (HIDDEN UNTIL SEARCH SUCCESS) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardUserProfile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="3dp"
+        android:layout_marginBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="14dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Profile Image -->
+            <ImageView
+                android:id="@+id/ivProfilePhoto"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:scaleType="centerCrop"
+
+                android:background="@drawable/profile_pic_bg"
+                android:layout_marginEnd="14dp" />
+
+            <!-- User Info -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_weight="1">
+
+                <TextView
+                    android:id="@+id/tvFullName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Full Name"
+                    android:textColor="#212121"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvUsername"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="username"
+                    android:textColor="#616161"
+                    android:textSize="13sp"
+                    android:layout_marginTop="2dp" />
+
+                <TextView
+                    android:id="@+id/tvEmail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="email@example.com"
+                    android:textColor="#616161"
+                    android:textSize="10sp"
+                    android:layout_marginTop="2dp" />
+
+                <TextView
+                    android:id="@+id/tvJobPosition"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Software Engineer"
+                    android:textColor="#616161"
+                    android:textSize="10sp"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
+
+            <!-- Follow Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFollow"
+                android:layout_width="92dp"
+                android:layout_height="36dp"
+                android:text="Follow"
+                android:textSize="13sp"
+                app:cornerRadius="18dp"
+                android:textAllCaps="false"
+                app:backgroundTint="@color/blue"
+                android:textColor="@android:color/white" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+
+    <!-- 📄 Posts Recycler -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvUserPosts"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingVertical="8dp"
+        android:clipToPadding="false" />
+
+</LinearLayout>

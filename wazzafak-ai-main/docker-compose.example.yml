@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Interview AI Backend - Connected to Supabase
+  interview_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: interview_backend
+    environment:
+      # Supabase PostgreSQL Connection String
+      # Get from: Supabase Dashboard > Settings > Database > Connection string > Connection pooling
+      # Format: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+      # IMPORTANT: URL-encode special characters in password (? → %3F, @ → %40, # → %23)
+      - DATABASE_URL=postgresql://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-YOUR_REGION.pooler.supabase.com:6543/postgres?sslmode=require
+      
+      # OpenAI API Key
+      # Get from: https://platform.openai.com/api-keys
+      - LLM_API_KEY=sk-your-openai-api-key-here
+      
+      # Optional: Custom base URL for Azure OpenAI or OpenRouter
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      
+      # Model configuration
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - CHAT_MODEL=${CHAT_MODEL:-gpt-4o-mini}
+      - EVAL_MODEL=${EVAL_MODEL:-gpt-4o}
+      
+      # Server port
+      - PORT=8089
+      
+      # Set to 1 for mock mode (no OpenAI calls - for testing)
+      - USE_MOCK=0
+    ports:
+      - "8089:8089"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: interview_network
+
+
+
+
+
+

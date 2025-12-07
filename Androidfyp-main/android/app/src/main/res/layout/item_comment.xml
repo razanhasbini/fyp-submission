@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="8dp"
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/bg_comment_balanced_neutral">
+
+    <!-- 👤 User Photo -->
+    <de.hdodenhof.circleimageview.CircleImageView
+        android:id="@+id/ivUserPhoto"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:src="@drawable/ic_profile_placeholder"
+        android:layout_marginEnd="10dp"
+        android:elevation="2dp" />
+
+    <!-- 💬 Comment Content -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- Username -->
+        <TextView
+            android:id="@+id/tvUserName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="User Name"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:textColor="#111111"
+            android:fontFamily="sans-serif-medium" />
+
+        <!-- Comment text -->
+        <TextView
+            android:id="@+id/tvCommentContent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="This is a comment..."
+            android:textSize="13sp"
+            android:textColor="#444444"
+            android:layout_marginTop="2dp"
+            android:lineSpacingExtra="1.5dp" />
+    </LinearLayout>
+
+    <!-- 🗑️ Delete Button -->
+    <TextView
+        android:id="@+id/tvDeleteComment"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Delete"
+        android:textColor="#666666"
+        android:textStyle="bold"
+        android:textSize="12sp"
+        android:layout_marginStart="8dp"
+        android:visibility="gone"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="3dp"
+        android:background="@drawable/bg_delete_neutral"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackgroundBorderless" />
+</LinearLayout>

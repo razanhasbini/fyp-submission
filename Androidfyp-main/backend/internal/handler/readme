@@ -1,0 +1,2 @@
+Handlers receive API requests, perform basic input validation, and pass data to the service layer.
+

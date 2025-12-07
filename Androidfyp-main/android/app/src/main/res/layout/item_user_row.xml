@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="12dp"
+    android:layout_marginVertical="6dp"
+    app:cardCornerRadius="10dp"
+    app:cardElevation="1dp"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:gravity="center_vertical">
+
+        <!-- Profile photo -->
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/ivUserPhoto"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/profile"
+            app:civ_border_width="1.5dp"
+            app:civ_border_color="@color/blue"
+            android:layout_marginEnd="14dp" />
+
+        <!-- User Info -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvUserName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="User Name"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:id="@+id/tvUserRole"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Software Engineer"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="12sp"
+                android:layout_marginTop="1dp"
+                android:visibility="gone"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Follow Button -->
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFollow"
+                android:layout_width="80dp"
+                android:layout_height="36dp"
+                android:text="Follow"
+                android:textSize="10sp"
+                app:cornerRadius="18dp"
+                app:backgroundTint="@color/blue"
+                android:textColor="@android:color/white"
+                android:textAllCaps="false"
+                android:fontFamily="sans-serif-medium"
+                android:layout_gravity="center" />
+
+            <ProgressBar
+                android:id="@+id/progressFollow"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="@color/blue"
+                android:visibility="gone" />
+        </FrameLayout>
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

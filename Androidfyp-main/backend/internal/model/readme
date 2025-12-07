@@ -1,0 +1,8 @@
+Models ensure correct data types, auto-generate IDs, and use ORM to simplify direct database queries.
+//gorm
+// Object-Relational Mapping is a technique that lets you work with your database tables as if they were objects in your code.
+// Instead of writing raw SQL queries like INSERT INTO users ... or SELECT * FROM users WHERE id=1,
+// you use structs and methods in your programming language.
+// Example: user := User{Name: "Mohamad", Email: "mohamad@example.com"}
+
+

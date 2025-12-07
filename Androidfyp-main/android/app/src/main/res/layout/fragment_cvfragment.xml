@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:padding="16dp"
+    android:background="#F1F5F9"
+    tools:context=".app.cvanalysis.view.cvfragment">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Screen Title -->
+        <TextView
+            android:id="@+id/tvCvAnalysisTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="CV Analysis"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="#0F172A"
+            android:paddingBottom="8dp" />
+
+        <!-- Short description -->
+        <TextView
+            android:id="@+id/tvCvAnalysisDescription"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Upload your CV (PDF or DOCX). The system will analyze it and give feedback about strengths, weaknesses, and how to improve."
+            android:textSize="14sp"
+            android:textColor="#475569"
+            android:lineSpacingExtra="2dp"
+            android:paddingBottom="16dp" />
+
+        <!-- Upload card / section -->
+        <LinearLayout
+            android:id="@+id/layoutUploadSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="@drawable/rounded_card_white"
+            android:elevation="3dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:id="@+id/tvUploadLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Upload your CV file"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:textColor="#0F172A"
+                android:paddingBottom="8dp" />
+
+            <!-- Selected file name -->
+            <TextView
+                android:id="@+id/tvSelectedFileName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No file selected"
+                android:textSize="14sp"
+                android:textColor="#64748B"
+                android:paddingBottom="4dp"
+                tools:text="My_CV.pdf" />
+
+            <!-- Hint about allowed types -->
+            <TextView
+                android:id="@+id/tvFileTypeHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Allowed formats: PDF (.pdf) or Word (.docx)"
+                android:textSize="12sp"
+                android:textColor="#94A3B8"
+                android:paddingBottom="12dp" />
+
+            <!-- Button to pick file -->
+            <Button
+                android:id="@+id/btnSelectCvFile"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Choose CV File"
+                android:textColor="#FFFFFF"
+                android:textAllCaps="false"
+                android:background="@drawable/btn_blue"
+                android:backgroundTint="@null"
+                app:backgroundTint="@null" />
+
+        </LinearLayout>
+
+        <!-- Analyze button -->
+        <Button
+            android:id="@+id/btnAnalyzeCv"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Analyze CV"
+            android:textColor="#FFFFFF"
+            android:textAllCaps="false"
+            android:background="@drawable/btn_green"
+            android:backgroundTint="@null"
+            app:backgroundTint="@null"
+            android:enabled="false"
+            android:alpha="0.4"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Loading indicator while analysis runs -->
+        <ProgressBar
+            android:id="@+id/progressAnalyzing"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:visibility="gone"
+            android:layout_marginTop="4dp" />
+
+        <!-- AI Response Section (full width card) -->
+        <LinearLayout
+            android:id="@+id/layoutAiResponse"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="16dp"
+            android:padding="16dp"
+            android:background="@drawable/rounded_card_white"
+            android:elevation="3dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvAiResponseTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="CV Feedback"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#0F172A"
+                android:paddingBottom="8dp" />
+
+            <!-- Main summary -->
+            <TextView
+                android:id="@+id/tvAiSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="#475569"
+                android:lineSpacingExtra="2dp"
+                android:paddingBottom="8dp"
+                tools:text="Overall, your CV is clear. Consider improving your skills section and quantifying your achievements." />
+
+            <!-- Bullet-like suggestions -->
+            <TextView
+                android:id="@+id/tvAiSuggestions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="#475569"
+                android:lineSpacingExtra="2dp"
+                tools:text="• Add measurable results to your experience section.\n• Highlight Android, Kotlin, and Go skills.\n• Adjust your CV to match job descriptions for each position." />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

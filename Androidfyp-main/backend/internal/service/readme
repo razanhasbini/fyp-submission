@@ -1,0 +1,2 @@
+The service layer contains the business logic — 
+it processes and validates data received from the handlers before interacting with the repository to perform database operations.
