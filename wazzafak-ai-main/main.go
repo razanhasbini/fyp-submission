@@ -588,16 +588,21 @@ func (a *App) handleNextQ(w http.ResponseWriter, r *http.Request) {
 	}
 	queryEmb := qEmb[0]
 
-	
-	cvRows, err := a.DB.Query(`
+	// Use unique query ID to avoid prepared statement cache issues
+	uniqueCVQueryID := time.Now().UnixNano()
+	cvQuery := fmt.Sprintf(`
 	  SELECT c.chunk_text, c.embedding_json
 	  FROM ai.cv_chunks c
 	  JOIN ai.cv_documents d ON d.id = c.cv_id
 	  WHERE d.user_id = $1
 	  ORDER BY c.ord
-	  LIMIT 200`, in.UserID)
+	  LIMIT 200
+	  -- Unique CV query ID: %d`, uniqueCVQueryID)
+	
+	ctx := r.Context()
+	cvRows, err := a.DB.QueryContext(ctx, cvQuery, in.UserID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer cvRows.Close()
@@ -611,11 +616,16 @@ func (a *App) handleNextQ(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	kbRows, err := a.DB.Query(`
+	// Use unique query ID to avoid prepared statement cache issues
+	uniqueKBQueryID := time.Now().UnixNano()
+	kbQuery := fmt.Sprintf(`
 	  SELECT text, embedding_json
 	  FROM ai.kb_articles
 	  WHERE domain = $1
-	  LIMIT 200`, in.Domain)
+	  LIMIT 200
+	  -- Unique KB query ID: %d`, uniqueKBQueryID)
+	
+	kbRows, err := a.DB.QueryContext(ctx, kbQuery, in.Domain)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
