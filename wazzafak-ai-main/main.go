@@ -736,9 +736,11 @@ func (a *App) evaluateAnswerInternal(sessionID string, userID int64, question, a
 	
 	ctxBlock := ""
 	if domain != "" {
-		kbRows, err := a.DB.Query(`
+		uniqueEvalKBQueryID := time.Now().UnixNano()
+		kbQuery := fmt.Sprintf(`
 			SELECT text FROM ai.kb_articles WHERE domain = $1 LIMIT 6
-		`, domain)
+			-- Unique eval KB query ID: %d`, uniqueEvalKBQueryID)
+		kbRows, err := a.DB.QueryContext(ctx, kbQuery, domain)
 		if err == nil {
 			defer kbRows.Close()
 			var snippets []string
@@ -929,13 +931,19 @@ func (a *App) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	queryEmb := qaEmb[0]
 
-	kbRows, err := a.DB.Query(`
+	// Use unique query ID to avoid prepared statement cache issues
+	uniqueEvalQueryID := time.Now().UnixNano()
+	kbQuery := fmt.Sprintf(`
 	  SELECT text, embedding_json
 	  FROM ai.kb_articles
 	  WHERE domain = $1
-	  LIMIT 200`, in.Domain)
+	  LIMIT 200
+	  -- Unique eval query ID: %d`, uniqueEvalQueryID)
+	
+	ctx := r.Context()
+	kbRows, err := a.DB.QueryContext(ctx, kbQuery, in.Domain)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer kbRows.Close()
@@ -2077,10 +2085,15 @@ func (a *App) handleStartSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := fmt.Sprintf("sess_%d_%d", in.UserID, time.Now().UnixNano())
 
 	
-	_, err := a.DB.Exec(`
+	// Use unique query ID to avoid prepared statement cache issues
+	uniqueSessionID := time.Now().UnixNano()
+	sessionQuery := fmt.Sprintf(`
 		INSERT INTO ai.practice_sessions (user_id, major, created_at, updated_at)
 		VALUES ($1, $2, NOW(), NOW())
-	`, in.UserID, in.Major)
+		-- Unique session insert ID: %d`, uniqueSessionID)
+	
+	ctx := r.Context()
+	_, err := a.DB.ExecContext(ctx, sessionQuery, in.UserID, in.Major)
 
 	if err != nil {
 		log.Printf("Warning: Could not insert practice session: %v", err)
@@ -2117,11 +2130,16 @@ func (a *App) handleEndSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	
-	rows, err := a.DB.Query(`
+	// Use unique query ID to avoid prepared statement cache issues
+	uniqueEndSessionID := time.Now().UnixNano()
+	endSessionQuery := fmt.Sprintf(`
 		SELECT result_json FROM ai.evaluations WHERE session_id = $1
-	`, in.SessionID)
+		-- Unique end session query ID: %d`, uniqueEndSessionID)
+	
+	ctx := r.Context()
+	rows, err := a.DB.QueryContext(ctx, endSessionQuery, in.SessionID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
