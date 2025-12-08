@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -31,6 +31,22 @@ type App struct {
 	EvalModel string
 	Port      string
 	Mock      bool
+}
+
+// InterviewState tracks the live interview state for one candidate
+type InterviewState struct {
+	Turn              int
+	Responses         []string
+	TechAsked         int
+	Field             string
+	Subfield          string
+	Skills            []string
+	Projects          []string
+	Experiences       []string
+	LastUser          string
+	LastQuestion      string
+	Asked             []string
+	InCandidateQPhase bool
 }
 
 func mustEnv(k string) string {
@@ -72,116 +88,120 @@ func main() {
 	
 	
 	if strings.Contains(dsn, ":6543") {
-		log.Printf("⚠️ Detected Supabase pooler (port 6543) - switching to direct connection (port 5432)")
-		log.Printf("⚠️ Pooler doesn't support prepared statements, which causes 'prepared statement already exists' errors")
+		log.Printf("ℹ️ Using Supabase pooler connection (port 6543)")
+		log.Printf("ℹ️ Pooler connection is being used to avoid IPv6 issues")
+		// Keep using pooler connection - don't switch to direct connection
+		// The pooler works fine with prepareThreshold=0
 		
 		
 		
-		
-		
-		queryParams := ""
-		if strings.Contains(dsn, "?") {
-			parts := strings.Split(dsn, "?")
-			if len(parts) > 1 {
-				queryParams = parts[1]
-				dsn = parts[0] 
-			}
-		}
-		
-		
-		projectRef := ""
-		password := ""
-		if strings.Contains(dsn, "postgres.") && strings.Contains(dsn, "@") {
-			
-			userPart := strings.Split(dsn, "@")[0]
-			
-			if strings.Contains(userPart, "://") {
-				userPart = strings.Split(userPart, "://")[1]
-			}
-			
-			userParts := strings.Split(userPart, ":")
-			if len(userParts) >= 2 {
-				
-				if strings.Contains(userParts[0], ".") {
-					projectRef = strings.Split(userParts[0], ".")[1]
-				}
-				
-				password = userParts[1]
-			}
-		}
-		
-		
-		if projectRef != "" && password != "" {
-			
-			dsn = fmt.Sprintf("postgresql://postgres:%s@db.%s.supabase.co:5432/postgres", password, projectRef)
-			
-			if queryParams != "" {
-				dsn = dsn + "?" + queryParams
-			}
-			log.Printf("✅ Switched to direct connection: db.%s.supabase.co:5432", projectRef)
-		} else {
-			
-			log.Printf("⚠️ Could not parse pooler URL, using simple replacement")
-			dsn = strings.ReplaceAll(dsn, ".pooler.supabase.com:6543", ".supabase.co:5432")
-			dsn = strings.ReplaceAll(dsn, "pooler.supabase.com:6543", "supabase.co:5432")
-			
-			if strings.Contains(dsn, "postgres.") {
-				
-				re := regexp.MustCompile(`postgres\.([^:]+):`)
-				dsn = re.ReplaceAllString(dsn, "postgres:")
-			}
-			
-			if queryParams != "" {
-				if !strings.Contains(dsn, "?") {
-					dsn = dsn + "?" + queryParams
-				}
-			}
-		}
-		log.Printf("✅ Switched to direct connection to avoid prepared statement cache issues")
+		// Keep using pooler connection - it works fine with prepareThreshold=0
+		// This avoids IPv6 connection issues on Windows Docker
 	}
 	
 	
 	
 	
+	// Build connection string parameters in correct order
+	// Check if connection string already has query parameters
+	hasParams := strings.Contains(dsn, "?")
+	
 	if !strings.Contains(dsn, "prepareThreshold") {
-		if strings.Contains(dsn, "?") {
+		if hasParams {
 			dsn += "&prepareThreshold=0"
 		} else {
 			dsn += "?prepareThreshold=0"
+			hasParams = true
 		}
 	}
 	
 	if !strings.Contains(dsn, "sslmode") {
-		if strings.Contains(dsn, "?") {
+		if hasParams {
 			dsn += "&sslmode=require"
 		} else {
 			dsn += "?sslmode=require"
+			hasParams = true
 		}
 	}
 	
 	if !strings.Contains(dsn, "statement_cache_mode") {
-		dsn += "&statement_cache_mode=describe"
+		if hasParams {
+			dsn += "&statement_cache_mode=describe"
+		} else {
+			dsn += "?statement_cache_mode=describe"
+		}
 	}
 	log.Printf("🔗 Database connection string configured (prepared statements DISABLED via prepareThreshold=0, sslmode=require)")
 	
+	// Log connection details (without password)
+	dsnForLog := dsn
+	if strings.Contains(dsnForLog, "@") {
+		parts := strings.Split(dsnForLog, "@")
+		if len(parts) == 2 {
+			// Hide password in logs
+			if strings.Contains(parts[0], ":") {
+				userPass := strings.Split(parts[0], ":")
+				if len(userPass) >= 2 {
+					dsnForLog = userPass[0] + ":***@" + parts[1]
+				}
+			}
+		}
+	}
+	log.Printf("🔗 Connecting to: %s", dsnForLog)
+	
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("❌ Failed to open database connection: %v\n💡 Check: Connection string format, network connectivity, Supabase project status", err)
 	}
 	
 	db.SetMaxOpenConns(5)
 	db.SetMaxIdleConns(2)
-	db.SetConnMaxLifetime(5 * time.Minute) 
-	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	
+	// Set connection timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	
+	log.Printf("🔄 Testing database connection (timeout: 30s)...")
+	if err := db.PingContext(ctx); err != nil {
+		log.Fatalf(`❌ Database connection failed: %v
+
+🔍 TROUBLESHOOTING STEPS:
+1. Check Supabase Dashboard:
+   - Go to: https://app.supabase.com
+   - Verify project "npeusanizvcyjwsgbhfn" is active (not paused)
+   - Check Settings > Database > Connection string
+   
+2. Verify Connection String:
+   - Password should be URL-encoded (? → %%3F, @ → %%40)
+   - Format: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+   - Current format: postgresql://postgres.npeusanizvcyjwsgbhfn:***@aws-0-eu-north-1.pooler.supabase.com:6543/postgres
+   
+3. Check Network/Firewall:
+   - Ensure port 6543 is not blocked
+   - Try direct connection (port 5432) if pooler fails
+   
+4. Verify Password:
+   - Get password from: Supabase Dashboard > Settings > Database
+   - Reset password if needed
+   - URL-encode special characters
+
+5. Test Connection:
+   - Try connecting via Supabase SQL Editor
+   - Check if project is paused or deleted`, err)
 	}
 	
+	log.Printf("✅ Database ping successful")
+	
+	// Test query with timeout
+	testCtx, testCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer testCancel()
 	
 	var version string
-	if err := db.QueryRow("SELECT version()").Scan(&version); err != nil {
-		
+	if err := db.QueryRowContext(testCtx, "SELECT version()").Scan(&version); err != nil {
 		log.Printf("⚠️ Database test query failed (non-fatal): %v", err)
 		log.Printf("ℹ️ Continuing anyway - connection may still be functional")
+		log.Printf("💡 This might indicate prepared statement cache issues - queries may still work")
 	} else {
 		log.Printf("✅ Connected to database: %s", version)
 	}
@@ -1011,6 +1031,682 @@ var upgrader = websocket.Upgrader{
 	EnableCompression: true,
 }
 
+// Helper functions for interview logic
+func isConfused(msg string) bool {
+	m := strings.ToLower(msg)
+	confusionIndicators := []string{
+		"don't understand", "dont understand", "don't understand",
+		"i'm confused", "im confused",
+		"not sure what you mean",
+		"what do you mean",
+		"can you rephrase",
+		"can you say it differently",
+		"you are repeating",
+		"this is repeated",
+		"same question",
+	}
+	for _, c := range confusionIndicators {
+		if strings.Contains(m, c) {
+			return true
+		}
+	}
+	return false
+}
+
+func isEmotional(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "anxious") ||
+		strings.Contains(m, "anxiety") ||
+		strings.Contains(m, "nervous") ||
+		strings.Contains(m, "stressed") ||
+		strings.Contains(m, "worried") ||
+		strings.Contains(m, "sad") ||
+		strings.Contains(m, "frustrated") ||
+		strings.Contains(m, "overwhelmed") ||
+		strings.Contains(m, "not confident") ||
+		strings.Contains(m, "i'm scared") ||
+		strings.Contains(m, "im scared") ||
+		strings.Contains(m, "i feel bad")
+}
+
+func isEmotionalEnding(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "hope") ||
+		strings.Contains(m, "nervous") ||
+		strings.Contains(m, "worried") ||
+		strings.Contains(m, "did i do well") ||
+		strings.Contains(m, "not confident") ||
+		strings.Contains(m, "anxious")
+}
+
+func alreadyAsked(st *InterviewState, q string) bool {
+	q = strings.TrimSpace(strings.ToLower(q))
+	for _, prev := range st.Asked {
+		if strings.TrimSpace(strings.ToLower(prev)) == q {
+			return true
+		}
+	}
+	return false
+}
+
+func tooSimilar(newQ string, prevQs []string) bool {
+	newQ = strings.ToLower(newQ)
+	for _, old := range prevQs {
+		old = strings.ToLower(old)
+		if strings.HasPrefix(newQ, strings.Split(old, " ")[0]) {
+			return true
+		}
+		if strings.Contains(newQ, "explain") && strings.Contains(old, "explain") {
+			return true
+		}
+		if strings.Contains(newQ, "describe") && strings.Contains(old, "describe") {
+			return true
+		}
+		if strings.Contains(newQ, "how did you") && strings.Contains(old, "how did you") {
+			return true
+		}
+		if strings.Contains(newQ, "project") && strings.Contains(old, "project") {
+			return true
+		}
+		wordsNew := strings.Fields(newQ)
+		wordsOld := strings.Fields(old)
+		matches := 0
+		for _, wn := range wordsNew {
+			if len(wn) <= 4 {
+				continue
+			}
+			for _, wo := range wordsOld {
+				if wn == wo {
+					matches++
+					if matches >= 4 {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func pickRelevantProject(st *InterviewState, qType string) string {
+	if len(st.Projects) == 0 {
+		return ""
+	}
+	if qType == "technical" {
+		for _, p := range st.Projects {
+			lp := strings.ToLower(p)
+			if strings.Contains(lp, "api") ||
+				strings.Contains(lp, "backend") ||
+				strings.Contains(lp, "integration") ||
+				strings.Contains(lp, "real-time") {
+				return p
+			}
+		}
+	}
+	longest := ""
+	for _, p := range st.Projects {
+		if len(p) > len(longest) {
+			longest = p
+		}
+	}
+	return longest
+}
+
+func lastN(arr []string, n int) []string {
+	if len(arr) <= n {
+		return arr
+	}
+	return arr[len(arr)-n:]
+}
+
+// Extract CV structure using LLM
+func (a *App) extractStructure(ctx context.Context, cv string) (field, sub string, skills, projects, exps []string) {
+	if a.LLM == nil {
+		return "", "", nil, nil, nil
+	}
+	sys := `You are a precise CV parser. Extract structured information from the CV and return STRICT JSON.
+Rules:
+- Field must be one of: "Software Engineering", "Business", "Mechanical Engineering", "Graphic Design", "Marketing", "Other"
+- Subfield must be a short phrase (e.g., Frontend, Backend, Finance, UI/UX, etc.)
+- Skills: list of individual skills (not sentences)
+- Projects: 1–2 sentence summaries or titles
+- Experiences: short role@company descriptions
+No commentary outside JSON.`
+	user := fmt.Sprintf(`Extract structured info from this CV.
+CV:
+---
+%s
+---
+Return JSON:
+{
+  "field": "Software Engineering | Business | Mechanical Engineering | Graphic Design | Marketing | Other",
+  "subfield": "short phrase",
+  "skills": ["skill1","skill2",...],
+  "projects": ["project summary or title", "..."],
+  "experiences": ["role@company with brief context", "..."]
+}`, cv)
+
+	ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.1,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 500,
+	})
+	if err != nil || len(resp.Choices) == 0 {
+		return "", "", nil, nil, nil
+	}
+	js := extractJSON(strings.TrimSpace(resp.Choices[0].Message.Content))
+	var out struct {
+		Field       string   `json:"field"`
+		Subfield    string   `json:"subfield"`
+		Skills      []string `json:"skills"`
+		Projects    []string `json:"projects"`
+		Experiences []string `json:"experiences"`
+	}
+	_ = json.Unmarshal([]byte(js), &out)
+	return strings.TrimSpace(out.Field), strings.TrimSpace(out.Subfield), out.Skills, out.Projects, out.Experiences
+}
+
+// First message: greeting + explain structure + ask how they feel
+func (a *App) firstQuestion(ctx context.Context, st *InterviewState, cv string) string {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("❌ Panic in firstQuestion: %v", r)
+		}
+	}()
+	
+	if a.LLM == nil {
+		return "Hi there, I'm your interviewer today. We'll go through some general questions and then some based on your CV. Before we dive in, how are you feeling today?"
+	}
+	sys := `You are a professional recruiter conducting a live video interview.
+Task: Generate a natural spoken introduction in 2–3 sentences.
+Content rules:
+- Sentence 1: Introduce yourself and your role.
+- Sentence 2: Briefly explain the interview structure (general questions + CV-based questions).
+- Sentence 3: Politely ask how they are feeling before starting.
+Tone: Warm, human, confident, not robotic.
+Do NOT: Ask any interview or CV questions yet. Use emojis or lists.`
+	user := "Generate the spoken introduction now."
+
+	ctx2, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.4,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 200,
+	})
+	if err != nil {
+		log.Printf("❌ Error in firstQuestion LLM call: %v", err)
+		return "Hi, I'm your interviewer today. We'll start with a few general questions and then some based on your CV. How are you feeling before we begin?"
+	}
+	if len(resp.Choices) == 0 {
+		log.Println("⚠️ firstQuestion: LLM returned no choices")
+		return "Hi, I'm your interviewer today. We'll start with a few general questions and then some based on your CV. How are you feeling before we begin?"
+	}
+	result := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if result == "" {
+		log.Println("⚠️ firstQuestion: LLM returned empty content")
+		return "Hi, I'm your interviewer today. We'll start with a few general questions and then some based on your CV. How are you feeling before we begin?"
+	}
+	return result
+}
+
+// Decide question type strictly by turn number
+func decideType(st *InterviewState) string {
+	switch st.Turn {
+	case 1:
+		return "personal_intro"
+	case 2:
+		return "motivation"
+	case 3, 4, 5:
+		return "technical"
+	case 6:
+		return "scenario"
+	case 7:
+		return "experience"
+	case 8:
+		return "behavioral"
+	default:
+		if st.Turn%2 == 0 {
+			return "experience"
+		}
+		return "scenario"
+	}
+}
+
+// Main question generator
+func (a *App) nextInterviewQuestion(ctx context.Context, st *InterviewState, cv string) string {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("❌ Panic in nextInterviewQuestion: %v", r)
+		}
+	}()
+	
+	qType := decideType(st)
+
+	// Fully deterministic for the first two questions
+	if qType == "personal_intro" {
+		return "To start off, could you tell me a bit about yourself and your background?"
+	}
+	if qType == "motivation" {
+		return "What motivated you to apply for this type of role and work in this kind of environment?"
+	}
+
+	// First preference: CV-tailored question
+	if qType != "personal_intro" && qType != "motivation" {
+		if cvQ := a.generateCVTailoredQuestion(ctx, st, qType); cvQ != "" {
+			if qType == "technical" {
+				st.TechAsked++
+			}
+			return cvQ
+		}
+	}
+
+	// LLM generic interview question
+	var prevBlock string
+	if len(st.Asked) == 0 {
+		prevBlock = "(none)"
+	} else {
+		var rows []string
+		for _, q := range st.Asked {
+			q = strings.TrimSpace(q)
+			if q != "" {
+				rows = append(rows, "- "+q)
+			}
+		}
+		if len(rows) == 0 {
+			prevBlock = "(none)"
+		} else {
+			prevBlock = strings.Join(rows, "\n")
+		}
+	}
+
+	typeLine := ""
+	switch qType {
+	case "experience":
+		typeLine = "Ask about a specific project or experience from their CV. Prefer concrete projects if available. Ask for impact, decisions, or challenges."
+	case "technical":
+		typeLine = "Ask a focused technical question grounded in their listed skills or projects. One concept only, 1–2 sentences."
+	case "scenario":
+		typeLine = "Ask a realistic work scenario question that fits their field and subfield."
+	case "behavioral":
+		typeLine = "Ask about past behavior, such as conflict, teamwork, ownership, or dealing with pressure."
+	default:
+		typeLine = "Ask a professional interview question linked to their background."
+	}
+
+	sys := `You are a senior recruiter interviewing a candidate in a live conversation.
+GOAL: Generate ONE and ONLY ONE interview question.
+GENERAL RULES:
+- Maximum 2 sentences.
+- Use QUESTION_TYPE_INSTRUCTION to choose the topic.
+- Prefer using their CV (skills, projects, experiences) when relevant.
+- Sound like a human interviewer, not an AI.
+- Vary your language naturally.
+- Avoid repeating the same question or wording from PREVIOUS_QUESTIONS.
+MUST NOT:
+- Do NOT paraphrase or repeat the candidate's previous answers.
+- Do NOT ask more than one question.
+- Do NOT say "Thanks", "Understood", "Noted", or any acknowledgement.
+- Do NOT use emojis.
+OUTPUT: Return only the question text.`
+	user := fmt.Sprintf(`STRUCTURED_CV:
+Field=%s | Subfield=%s
+Skills=%v
+RelevantProject=%s
+Experiences=%v
+
+PREVIOUS_QUESTIONS:
+%s
+
+QUESTION_TYPE_INSTRUCTION:
+%s`, st.Field, st.Subfield, st.Skills, pickRelevantProject(st, qType), st.Experiences, prevBlock, typeLine)
+
+	if a.LLM == nil {
+		switch qType {
+		case "technical":
+			st.TechAsked++
+			return "Could you describe a technical challenge from one of your projects and how you solved it?"
+		case "scenario":
+			return "Imagine you join a project that is behind schedule. What would you do first?"
+		case "behavioral":
+			return "Tell me about a time you had a conflict with someone at work and how you handled it."
+		default:
+			return "Could you walk me through one of the main projects on your CV and your contribution?"
+		}
+	}
+
+	ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.5,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 200,
+	})
+	if err != nil {
+		log.Printf("❌ Error in nextInterviewQuestion LLM call: %v", err)
+		switch qType {
+		case "technical":
+			st.TechAsked++
+			return "Could you describe a technical challenge from one of your projects and how you solved it?"
+		case "scenario":
+			return "Imagine you join a project that is behind schedule. What would you do first?"
+		case "behavioral":
+			return "Tell me about a time you had a conflict with someone at work and how you handled it."
+		default:
+			return "Could you walk me through one of the main projects on your CV and your contribution?"
+		}
+	}
+	if len(resp.Choices) == 0 {
+		log.Println("⚠️ nextInterviewQuestion: LLM returned no choices")
+		switch qType {
+		case "technical":
+			st.TechAsked++
+			return "Could you describe a technical challenge from one of your projects and how you solved it?"
+		case "scenario":
+			return "Imagine you join a project that is behind schedule. What would you do first?"
+		case "behavioral":
+			return "Tell me about a time you had a conflict with someone at work and how you handled it."
+		default:
+			return "Could you walk me through one of the main projects on your CV and your contribution?"
+		}
+	}
+
+	out := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if out == "" {
+		log.Println("⚠️ nextInterviewQuestion: LLM returned empty content")
+		switch qType {
+		case "technical":
+			st.TechAsked++
+			return "Could you describe a technical challenge from one of your projects and how you solved it?"
+		case "scenario":
+			return "Imagine you join a project that is behind schedule. What would you do first?"
+		case "behavioral":
+			return "Tell me about a time you had a conflict with someone at work and how you handled it."
+		default:
+			return "Could you walk me through one of the main projects on your CV and your contribution?"
+		}
+	}
+	if tooSimilar(out, lastN(st.Asked, 4)) {
+		if alt := a.generateCVTailoredQuestion(ctx, st, qType); alt != "" && !tooSimilar(alt, lastN(st.Asked, 4)) {
+			out = alt
+		}
+	}
+	if qType == "technical" {
+		st.TechAsked++
+	}
+	return out
+}
+
+// Generate CV-tailored question
+func (a *App) generateCVTailoredQuestion(ctx context.Context, st *InterviewState, qType string) string {
+	if a.LLM == nil {
+		return ""
+	}
+	if len(st.Skills) == 0 && len(st.Projects) == 0 && len(st.Experiences) == 0 {
+		return ""
+	}
+
+	sys := `You are a senior human interviewer generating a CV-based question.
+GOALS:
+- Ask ONE creative, fresh, and unique question based on the candidate's CV.
+- Rotate topics: skills → project → experience → challenge → decision-making → teamwork → impact.
+- Explore a NEW angle every time.
+STRICT RULES:
+- Max 2 sentences.
+- Must be different in structure and topic from the last 4 questions.
+- Do NOT reuse similar verbs, patterns, or templates.
+- Do NOT repeat any concept asked earlier.
+- Do NOT ask generic "describe/explain/tell me".
+- No filler, no acknowledgment.
+STYLE: Human, conversational, professional. Curious but not interrogative. Realistic questions a real interviewer would ask.`
+	user := fmt.Sprintf(`CANDIDATE STRUCTURE:
+Field: %s
+Subfield: %s
+Skills: %v
+Projects: %v
+Experiences: %v
+
+LAST_QUESTIONS (avoid all topics & patterns):
+%v
+
+YOUR TASK: Generate ONE fresh, novel CV-based question exploring a different aspect of the candidate's background.`, st.Field, st.Subfield, st.Skills, st.Projects, st.Experiences, lastN(st.Asked, 4))
+
+	ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.4,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 200,
+	})
+	if err != nil || len(resp.Choices) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content)
+}
+
+// Generate acknowledgement
+var neutralAcks = []string{
+	"Alright.", "I understand.", "Okay.", "Good to know.", "Got it.", "That makes sense.", "Thanks for sharing that.",
+}
+var softEmpathyAcks = []string{
+	"I understand how that could feel stressful.", "I hear you, and that's completely valid.", "I get that this can feel a bit overwhelming.",
+}
+
+func pickNeutralAck() string {
+	return neutralAcks[rand.Intn(len(neutralAcks))]
+}
+
+func (a *App) generateAcknowledgement(ctx context.Context, st *InterviewState) string {
+	ans := strings.TrimSpace(st.LastUser)
+	if ans == "" {
+		return pickNeutralAck()
+	}
+	if isEmotional(ans) {
+		return softEmpathyAcks[rand.Intn(len(softEmpathyAcks))]
+	}
+	if len(ans) < 25 {
+		return pickNeutralAck()
+	}
+
+	sys := `You are a recruiter. Return ONE very short acknowledgement to the candidate's answer.
+RULES:
+- Max 1 short sentence.
+- Do NOT summarize or repeat the candidate's answer.
+- Do NOT mention the specific content or topic of the answer.
+- Neutral professional tone.
+- No follow-up questions.
+- No emojis.`
+	user := fmt.Sprintf("Candidate answer: %s\nLast question asked: %s", ans, st.LastQuestion)
+
+	ctx2, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.2,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 50,
+	})
+	if err != nil || len(resp.Choices) == 0 {
+		return pickNeutralAck()
+	}
+	ack := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if ack == "" {
+		return pickNeutralAck()
+	}
+	return ack
+}
+
+// Rephrase question
+func (a *App) rephraseQuestion(ctx context.Context, st *InterviewState) string {
+	orig := strings.TrimSpace(st.LastQuestion)
+	if orig == "" {
+		return "Let me phrase that differently: could you walk me through your thought process in that situation?"
+	}
+	if a.LLM == nil {
+		return "Let me say it a different way: " + orig
+	}
+
+	sys := `You are a recruiter rephrasing a question because the candidate is confused.
+RULES:
+- Change the angle completely (not the wording only).
+- Make it easier, simpler, more concrete.
+- Remove technical wording.
+- ONE short sentence only.
+- Do NOT repeat the original question structure.
+- Do NOT say sorry or apologise.
+- Keep it conversational.`
+	user := fmt.Sprintf("Original question: %s\nCandidate said: %s", orig, st.LastUser)
+
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.3,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 100,
+	})
+	if err != nil || len(resp.Choices) == 0 {
+		return "Let me rephrase that: " + orig
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content)
+}
+
+// Maybe follow-up
+func (a *App) maybeFollowUp(ctx context.Context, st *InterviewState) string {
+	if a.LLM == nil {
+		return ""
+	}
+	if isConfused(st.LastUser) {
+		return ""
+	}
+	if len(st.LastUser) < 40 {
+		return ""
+	}
+	if rand.Float64() > 0.05 {
+		return ""
+	}
+
+	sys := `You are a professional interviewer. Write ONE follow-up question that stays on the same topic as the original question.
+STRICT RULES:
+- Max 9 words.
+- One sentence.
+- Same topic ONLY.
+- No generic 'tell me more'.
+- No repeating earlier questions.
+- No re-asking anything from the last 3 questions.
+- No filler, no fluff.`
+	user := fmt.Sprintf("LastQuestion: %s\nCandidateAnswer: %s\nPrevious3: %v", st.LastQuestion, st.LastUser, lastN(st.Asked, 3))
+
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.25,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 50,
+	})
+	if err != nil || len(resp.Choices) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content)
+}
+
+// Answer candidate question
+func (a *App) answerCandidateQuestion(ctx context.Context, st *InterviewState, question string) string {
+	q := strings.TrimSpace(question)
+	if q == "" {
+		return "Those are great questions, and the hiring manager will share more details with you in the next stage."
+	}
+
+	sys := `You are a recruiter. The candidate is asking a question about the role or company.
+RULES:
+- Answer in 2–3 sentences.
+- Be concise and realistic.
+- If you don't know a detail, give a professional generic answer.
+- No emojis. No bullet points.`
+	user := fmt.Sprintf("Candidate question: %q\nField: %s | Subfield: %s", q, st.Field, st.Subfield)
+
+	ctx2, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.4,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 150,
+	})
+	if err != nil || len(resp.Choices) == 0 {
+		return "Great question — the hiring team will share more specifics with you in the next interview stage."
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content)
+}
+
+// Generate closing message
+func (a *App) generateClosingMessage(ctx context.Context, st *InterviewState) string {
+	if a.LLM == nil {
+		return "Thank you for your time today. This concludes the interview and we will follow up with you soon."
+	}
+
+	sys := `You are a professional recruiter. Your job is to close the interview politely.
+STRICT RULES:
+- 2–3 sentences maximum.
+- Professional and warm.
+- No repeated phrases ("Noted", "Understood", "Thanks for sharing") unless really natural.
+- No filler, no clichés.
+- If the interview felt emotional, include a gentle reassurance.
+- Do NOT ask any new questions.
+- No emojis.`
+	user := fmt.Sprintf(`Field: %s
+Subfield: %s
+LastUserMessage: %s
+SummaryOfQuestions: %v`, st.Field, st.Subfield, st.LastUser, lastN(st.Asked, 8))
+
+	ctx2, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	resp, err := a.LLM.CreateChatCompletion(ctx2, openai.ChatCompletionRequest{
+		Model:       a.ChatModel,
+		Temperature: 0.3,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: sys},
+			{Role: openai.ChatMessageRoleUser, Content: user},
+		},
+		MaxTokens: 150,
+	})
+	if err != nil || len(resp.Choices) == 0 {
+		return "Thank you for your time. We will stay in touch with the next steps."
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content)
+}
+
 func (a *App) handleLiveInterview(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -1021,10 +1717,8 @@ func (a *App) handleLiveInterview(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("🎙️ New live interview session started")
 
-	
 	sessionID := fmt.Sprintf("live_%d_%d", time.Now().Unix(), time.Now().UnixNano()%1000000)
 
-	
 	query := r.URL.Query()
 	userIDStr := query.Get("user_id")
 	var userID int64
@@ -1032,182 +1726,62 @@ func (a *App) handleLiveInterview(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscan(userIDStr, &userID)
 	}
 
-	
-	
+	// Load latest CV text for this user
 	var cvText string
 	if userID > 0 {
-		
-		query := fmt.Sprintf(`SELECT text FROM ai.cv_documents WHERE user_id = %d ORDER BY id DESC LIMIT 1`, userID)
-		err := a.DB.QueryRow(query).Scan(&cvText)
-		if err != nil && err != sql.ErrNoRows {
-			log.Println("Error loading CV:", err)
-			
-			if strings.Contains(err.Error(), "prepared statement") {
-				ctx := context.Background()
-				err = a.DB.QueryRowContext(ctx, query).Scan(&cvText)
-				if err != nil && err != sql.ErrNoRows {
-					log.Println("Error loading CV (retry):", err)
+		log.Printf("🔍 Loading CV for user_id: %d", userID)
+		ctx := context.Background()
+		query := fmt.Sprintf(`SELECT text FROM ai.cv_documents WHERE user_id = %d ORDER BY created_at DESC LIMIT 1 -- Unique CV query for user %d`, userID, userID)
+		err := a.DB.QueryRowContext(ctx, query).Scan(&cvText)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				log.Printf("⚠️ No CV found for user_id: %d", userID)
+			} else {
+				log.Printf("❌ Error loading CV for user %d: %v", userID, err)
+				query2 := fmt.Sprintf(`SELECT text FROM ai.cv_documents WHERE user_id = %d ORDER BY id DESC LIMIT 1 -- Retry CV query for user %d`, userID, userID)
+				if err2 := a.DB.QueryRowContext(ctx, query2).Scan(&cvText); err2 != nil {
+					log.Printf("❌ Retry also failed for user %d: %v", userID, err2)
+				} else {
+					log.Printf("✅ CV loaded successfully (retry) for user %d (%d chars)", userID, len(cvText))
 				}
 			}
+		} else {
+			log.Printf("✅ CV loaded successfully for user %d (%d characters)", userID, len(cvText))
 		}
 	}
 
-	
-	cvContext := ""
-	if cvText != "" {
-		
-		cvPreview := cvText
-		if len(cvPreview) > 3000 {
-			cvPreview = cvPreview[:3000] + "..."
+	// Analyze CV structure once
+	st := &InterviewState{Turn: 0, TechAsked: 0}
+	if strings.TrimSpace(cvText) != "" && a.LLM != nil {
+		if fld, sub, skills, projs, exps := a.extractStructure(r.Context(), cvText); fld != "" {
+			st.Field = fld
+			st.Subfield = sub
+			st.Skills = skills
+			st.Projects = projs
+			st.Experiences = exps
+			log.Printf("📋 CV Structure: Field=%s, Subfield=%s, Skills=%d, Projects=%d, Experiences=%d", 
+				fld, sub, len(skills), len(projs), len(exps))
 		}
-		cvContext = fmt.Sprintf(`
-CANDIDATE'S CV CONTENT (READ THIS CAREFULLY):
-%s
-
-IMPORTANT: You MUST ask questions about specific items from this CV. Reference their:
-- Skills and technologies mentioned
-- Work experience and projects
-- Education and certifications
-- Achievements and accomplishments
-- Any specific tools, frameworks, or methodologies listed`, cvPreview)
-	}
-	
-	systemPrompt := fmt.Sprintf(`You are a senior professional interviewer conducting a comprehensive mock interview. Your role is to assess the candidate thoroughly across multiple dimensions, with HEAVY EMPHASIS on their CV content.
-
-%s
-
-INTERVIEW STRUCTURE & APPROACH:
-1. **Opening (First Message)**: Greet professionally: "Hello! Thank you for taking the time today. I'm [Your Name], and I'll be conducting your interview. Let's begin with a brief introduction - could you tell me a bit about yourself?"
-
-2. **Question Types to Cover** (mix throughout the interview, PRIORITIZE CV-BASED QUESTIONS):
-   a) **CV-Specific Technical Questions** (MOST IMPORTANT - 50%% of questions):
-      - Ask about specific technologies, tools, or skills mentioned in their CV
-      - "I see you worked with [Technology from CV]. Can you tell me about your experience with that?"
-      - "Your CV mentions [Project/Skill]. Walk me through how you implemented/used that."
-      - "You listed [Technology] in your skills. Can you explain a project where you used it?"
-      - Deep dive into their work experience: "Tell me more about your role at [Company from CV]."
-      - Ask about specific projects: "I noticed you worked on [Project from CV]. What was your contribution?"
-      - For Software Engineering: Ask about specific languages, frameworks, databases mentioned in CV
-      - For other fields: Ask about domain-specific tools, methodologies, or experiences from CV
-   
-   b) **Technical Questions** (based on CV field):
-      - Algorithms, data structures, system design (if software engineering)
-      - Domain-specific technical knowledge related to their CV field
-   
-   c) **Behavioral Questions** (STAR method) - reference CV when possible:
-      - "Tell me about a time when you..." (prefer experiences from their CV)
-      - "I see you worked at [Company from CV]. Describe a challenging situation there..."
-      - "Give me an example of how you handled..." (relate to their CV experience)
-   
-   d) **Scenario-Based Questions** (related to CV):
-      - "Based on your experience with [CV item], how would you approach..."
-      - "Given your background in [CV field], what would you do if..."
-      - "Imagine you're faced with [scenario related to their CV experience]..."
-
-3. **Interview Flow** (CV-FOCUSED):
-   - Start with introduction/background (1 question) - ask them to elaborate on their CV summary
-   - **CV-Specific Technical Deep Dive (5-6 questions)** - This is the MAIN FOCUS:
-     * Ask about each major technology/skill from their CV
-     * Ask about their work experience in detail
-     * Ask about specific projects they listed
-     * Ask about their education/certifications if relevant
-   - Include behavioral questions (2-3 questions) - reference CV experiences
-   - Add scenario-based questions (2-3 questions) - relate to CV background
-   - Conclude with any final questions or wrap-up (1 question)
-   - Total: 10-12 questions, with 50%%+ being CV-specific
-
-4. **Question Quality**:
-   - Ask ONE question at a time
-   - **ALWAYS reference specific items from their CV when possible**
-   - Be specific: "I see you worked with React. Can you explain how you used it in your [Project Name]?"
-   - Follow up on answers with deeper CV-based questions
-   - Vary difficulty (mix easy, medium, challenging)
-   - Test both knowledge and thinking process
-   - If CV is available, make 60-70%% of questions CV-specific
-
-5. **Professional Tone**:
-   - Maintain a professional, respectful, and encouraging tone
-   - Provide brief acknowledgments of good answers
-   - If answer is weak, ask clarifying questions rather than being critical
-   - Keep questions clear and concise
-
-6. **CV Integration** (CRITICAL):
-   - If CV is provided, you MUST ask questions about it
-   - Reference specific companies, projects, technologies, skills from the CV
-   - Ask for details about experiences listed in the CV
-   - Verify their claimed skills by asking technical questions about them
-   - Don't just ask generic questions - make them CV-relevant
-
-7. **Conclusion**:
-   - After 10-12 exchanges, thank them professionally
-   - "Thank you for your time today. We'll be in touch soon. Do you have any questions for us?"
-
-IMPORTANT: 
-- Only ask questions or provide brief acknowledgments
-- Do NOT provide answers or hints
-- Keep responses conversational and natural
-- Focus on assessment, not teaching
-- **PRIORITIZE CV-BASED QUESTIONS - Make most questions reference their CV**`, cvContext)
-
-	messages := []openai.ChatCompletionMessage{
-		{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
 	}
 
-	
-	conn.WriteMessage(websocket.TextMessage, []byte("Connected. Starting interview..."))
-	log.Println("✅ WebSocket connection established, sending greeting...")
-
-	
-	if a.LLM == nil && !a.Mock {
-		log.Println("❌ LLM client is not initialized. Check USE_MOCK and LLM_API_KEY settings.")
-		conn.WriteMessage(websocket.TextMessage, []byte("Error: AI service not configured. Please check backend configuration."))
+	// 1) Send friendly intro ONLY (no interview question yet)
+	opening := a.firstQuestion(r.Context(), st, cvText)
+	if opening == "" {
+		opening = "Hi there, I'm your interviewer today. We'll go through some general questions and then some based on your CV. Before we dive in, how are you feeling today?"
+		log.Println("⚠️ firstQuestion returned empty, using fallback")
+	}
+	st.LastQuestion = opening
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(opening)); err != nil {
+		log.Printf("❌ Error sending opening message: %v", err)
 		return
 	}
-	
-	
-	if a.Mock {
-		mockGreeting := "Hello! Thank you for taking the time today. I'll be conducting your interview. Let's begin with a brief introduction - could you tell me a bit about yourself?"
-		log.Println("🤖 Interviewer (MOCK):", mockGreeting)
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: mockGreeting,
-		})
-		conn.WriteMessage(websocket.TextMessage, []byte(mockGreeting))
-	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		resp, err := a.LLM.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-			Model:       a.ChatModel,
-			Temperature: 0.7,
-			Messages:    messages,
-		})
-		cancel()
 
-		if err != nil {
-			log.Printf("❌ Error starting interview: %v", err)
-			conn.WriteMessage(websocket.TextMessage, []byte("Error starting interview: "+err.Error()))
-			return
-		}
-
-		firstReply := strings.TrimSpace(resp.Choices[0].Message.Content)
-		log.Println("🤖 Interviewer:", firstReply)
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: firstReply,
-		})
-		conn.WriteMessage(websocket.TextMessage, []byte(firstReply))
-	}
-
-	
-	
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	
+	// Conversation loop
 	for {
-		
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 		
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("read error: %v", err)
 			} else {
@@ -1216,77 +1790,99 @@ IMPORTANT:
 			break
 		}
 
-		userMsg := string(msg)
+		userMsg := strings.TrimSpace(string(msg))
+		if userMsg == "" {
+			continue
+		}
+		st.Responses = append(st.Responses, userMsg)
+		st.LastUser = userMsg
 		log.Println("👤 Candidate:", userMsg)
 
-		
-		
+		// Evaluate answer asynchronously (non-blocking)
 		if userID > 0 {
-			
-			lastQuestion := "Interview Question"
-			for i := len(messages) - 1; i >= 0; i-- {
-				if messages[i].Role == openai.ChatMessageRoleAssistant {
-					lastQuestion = messages[i].Content
-					break
+			go func() {
+				log.Printf("📊 Evaluating answer asynchronously for user %d", userID)
+				evalResult := a.evaluateAnswerInternal(sessionID, userID, st.LastQuestion, userMsg, "")
+				if evalResult != nil {
+					log.Printf("📊 Evaluation complete: Overall=%.1f, Technical=%.1f, Communication=%.1f, Confidence=%.1f", 
+						evalResult["overall"], evalResult["technical_score"], 
+						evalResult["communication_score"], evalResult["confidence_score"])
 				}
+			}()
+		}
+
+		// 2) Confusion handling: rephrase the last question
+		if isConfused(userMsg) && st.LastQuestion != "" {
+			reply := a.rephraseQuestion(r.Context(), st)
+			st.LastQuestion = reply
+			st.Asked = append(st.Asked, reply)
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(reply))
+			continue
+		}
+
+		// 3) Candidate question phase (end of interview)
+		if st.InCandidateQPhase {
+			reply := a.answerCandidateQuestion(r.Context(), st, userMsg)
+			st.LastQuestion = reply
+			st.Asked = append(st.Asked, reply)
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(reply))
+
+			// Soft or neutral closing depending on emotion
+			var final string
+			if isEmotionalEnding(st.LastUser) {
+				final = "Thank you for sharing your thoughts today. You expressed yourself well, and we appreciate the effort you put into this interview."
+			} else {
+				final = a.generateClosingMessage(r.Context(), st)
 			}
-			
-			
-			evalResult := a.evaluateAnswerInternal(sessionID, userID, lastQuestion, userMsg, "")
-			if evalResult != nil {
-				log.Printf("📊 Evaluation: Overall=%.1f, Technical=%.1f, Communication=%.1f, Confidence=%.1f", 
-					evalResult["overall"], evalResult["technical_score"], 
-					evalResult["communication_score"], evalResult["confidence_score"])
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(final))
+			break
+		}
+
+		// 4) Optional follow-up (rare, only on long answers)
+		if st.Turn > 0 && len(userMsg) > 40 && !isConfused(userMsg) {
+			if follow := a.maybeFollowUp(r.Context(), st); follow != "" {
+				st.LastQuestion = follow
+				st.Asked = append(st.Asked, follow)
+				_ = conn.WriteMessage(websocket.TextMessage, []byte(follow))
+				continue
 			}
 		}
 
-		
-		if a.Mock {
-			reply := "Interesting — could you tell me a bit more about that?"
-			messages = append(messages, openai.ChatCompletionMessage{
-				Role:    openai.ChatMessageRoleUser,
-				Content: userMsg,
-			})
-			messages = append(messages, openai.ChatCompletionMessage{
-				Role:    openai.ChatMessageRoleAssistant,
-				Content: reply,
-			})
-			conn.WriteMessage(websocket.TextMessage, []byte(reply))
+		// 5) Advance turn and possibly switch to closing
+		st.Turn++
+
+		// After ~9 questions, move to candidate question phase
+		if st.Turn >= 9 {
+			ack := a.generateAcknowledgement(r.Context(), st)
+			closing := strings.TrimSpace(ack + " Before we wrap up, do you have any questions for us about the role or the company?")
+			st.LastQuestion = closing
+			st.Asked = append(st.Asked, closing)
+			st.InCandidateQPhase = true
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(closing))
 			continue
 		}
 
-		if a.LLM == nil {
-			log.Println("❌ LLM client is not initialized")
-			conn.WriteMessage(websocket.TextMessage, []byte("Error: AI service not available"))
-			continue
+		// 6) Generate main interview question for this turn
+		question := a.nextInterviewQuestion(r.Context(), st, cvText)
+		if question == "" {
+			question = "Tell me about a project from your CV that you're proud of and why."
 		}
 
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: userMsg,
-		})
-
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		resp, err := a.LLM.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-			Model:       a.ChatModel,
-			Temperature: 0.7,
-			Messages:    messages,
-		})
-		cancel()
-
-		if err != nil {
-			log.Printf("❌ AI error: %v", err)
-			conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()))
-			continue
+		// 7) Generate acknowledgement (only if answer was meaningful)
+		ack := ""
+		if len(userMsg) > 20 {
+			ack = a.generateAcknowledgement(r.Context(), st)
 		}
 
-		reply := strings.TrimSpace(resp.Choices[0].Message.Content)
-		log.Println("🤖 AI:", reply)
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: reply,
-		})
-		conn.WriteMessage(websocket.TextMessage, []byte(reply))
+		msgOut := strings.TrimSpace(strings.TrimSpace(ack) + " " + strings.TrimSpace(question))
+		if msgOut == "" {
+			msgOut = question
+		}
+
+		st.LastQuestion = question
+		st.Asked = append(st.Asked, question)
+
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(msgOut))
 	}
 
 	
@@ -1672,26 +2268,21 @@ func (a *App) handleGetUserScores(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var technicalScore, behavioralScore, cvAnalysisScore sql.NullFloat64
-	
+	var cvAnalysisScore sql.NullFloat64
 	
 	uniqueUserScoresID := time.Now().UnixNano()
-	query := fmt.Sprintf(`
-		SELECT 
-			COALESCE(technical_score, 0) as technical_score,
-			COALESCE(behavioral_score, 0) as behavioral_score,
-			COALESCE(cv_analysis_score, 0) as cv_analysis_score
+	userQuery := fmt.Sprintf(`
+		SELECT COALESCE(cv_analysis_score, 0) as cv_analysis_score
 		FROM public.users
 		WHERE id = %d
-		
+		-- Unique query ID: %d
 	`, userID, uniqueUserScoresID)
-	err := a.DB.QueryRow(query).Scan(&technicalScore, &behavioralScore, &cvAnalysisScore)
+	err := a.DB.QueryRow(userQuery).Scan(&cvAnalysisScore)
 
 	if err != nil {
-		
 		if strings.Contains(err.Error(), "prepared statement") {
 			ctx := context.Background()
-			err = a.DB.QueryRowContext(ctx, query).Scan(&technicalScore, &behavioralScore, &cvAnalysisScore)
+			err = a.DB.QueryRowContext(ctx, userQuery).Scan(&cvAnalysisScore)
 			if err != nil {
 				if err == sql.ErrNoRows {
 					http.Error(w, "User not found", http.StatusNotFound)
@@ -1710,10 +2301,34 @@ func (a *App) handleGetUserScores(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Get technical and behavioral scores from ai.feedback table
+	var technicalScore, behavioralScore float64
+	uniqueFeedbackID := time.Now().UnixNano()
+	feedbackQuery := fmt.Sprintf(`
+		SELECT 
+			COALESCE(technical_score, 0) as technical_score,
+			COALESCE((communication_score + confidence_score) / 2.0, 0) as behavioral_score
+		FROM ai.feedback
+		WHERE user_id = %d
+		ORDER BY created_at DESC
+		LIMIT 1
+		-- Unique query ID: %d
+	`, userID, uniqueFeedbackID)
+	
+	var feedbackTechnical, feedbackBehavioral sql.NullFloat64
+	feedbackErr := a.DB.QueryRow(feedbackQuery).Scan(&feedbackTechnical, &feedbackBehavioral)
+	if feedbackErr == nil {
+		technicalScore = feedbackTechnical.Float64
+		behavioralScore = feedbackBehavioral.Float64
+	} else if feedbackErr != sql.ErrNoRows {
+		log.Printf("⚠️ Could not fetch feedback scores: %v", feedbackErr)
+		// Continue with 0 values if there's an error (but not if no rows found)
+	}
+
 	response := map[string]interface{}{
 		"user_id":           userID,
-		"technical_score":   technicalScore.Float64,
-		"behavioral_score":  behavioralScore.Float64,
+		"technical_score":   technicalScore,
+		"behavioral_score":  behavioralScore,
 		"cv_analysis_score": cvAnalysisScore.Float64,
 	}
 
@@ -1746,7 +2361,7 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 	var cvScore float64
 	
 	uniqueScoreID := time.Now().UnixNano()
-	scoreQuery := fmt.Sprintf(`SELECT COALESCE(cv_analysis_score, 0) FROM public.users WHERE id = %d `, userID, uniqueScoreID)
+	scoreQuery := fmt.Sprintf(`SELECT COALESCE(cv_analysis_score, 0) FROM public.users WHERE id = %d -- Unique query ID: %d`, userID, uniqueScoreID)
 	ctxScore := context.Background()
 	err := a.DB.QueryRowContext(ctxScore, scoreQuery).Scan(&cvScore)
 	if err != nil {
@@ -1755,24 +2370,25 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	
-	var field, analysis string
+	var aiSuggestion, aiResponse string
+	var grade int
 	var createdAt time.Time
 	
 	uniqueAnalysisID := time.Now().UnixNano()
 	analysisQuery := fmt.Sprintf(`
-		SELECT ai_suggestion, ai_response, created_at
+		SELECT ai_suggestion, ai_response, grade, created_at
 		FROM public.cv_analysis
 		WHERE user_id = %d
 		ORDER BY created_at DESC
 		LIMIT 1
-		
+		-- Unique query ID: %d
 	`, userID, uniqueAnalysisID)
 	
 	log.Printf("🔍 Querying CV analysis for user %d", userID)
 	log.Printf("🔍 SQL Query: %s", analysisQuery)
 	
 	ctx := context.Background()
-	err = a.DB.QueryRowContext(ctx, analysisQuery).Scan(&field, &analysis, &createdAt)
+	err = a.DB.QueryRowContext(ctx, analysisQuery).Scan(&aiSuggestion, &aiResponse, &grade, &createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("❌ No CV analysis found for user %d in cv_analysis table", userID)
@@ -1794,8 +2410,9 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 				if userCount > 0 {
 					log.Printf("⚠️ WARNING: User has %d CV analyses but query returned no rows - possible data issue", userCount)
 					
-					simpleQuery := fmt.Sprintf(`SELECT ai_suggestion, ai_response, created_at FROM public.cv_analysis WHERE user_id = %d ORDER BY created_at DESC LIMIT 1`, userID)
-					if simpleErr := a.DB.QueryRowContext(ctxUserCheck, simpleQuery).Scan(&field, &analysis, &createdAt); simpleErr == nil {
+					uniqueSimpleID := time.Now().UnixNano()
+					simpleQuery := fmt.Sprintf(`SELECT ai_suggestion, ai_response, grade, created_at FROM public.cv_analysis WHERE user_id = %d ORDER BY created_at DESC LIMIT 1 -- Unique simple query ID: %d`, userID, uniqueSimpleID)
+					if simpleErr := a.DB.QueryRowContext(ctxUserCheck, simpleQuery).Scan(&aiSuggestion, &aiResponse, &grade, &createdAt); simpleErr == nil {
 						log.Printf("✅ Found CV analysis with simpler query!")
 						
 					} else {
@@ -1815,9 +2432,18 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 		}
 		
 		if strings.Contains(err.Error(), "prepared statement") {
-			log.Printf("🔄 Prepared statement error, retrying with fresh context...")
+			log.Printf("🔄 Prepared statement error, retrying with fresh context and unique query...")
 			ctxRetry := context.Background()
-			err = a.DB.QueryRowContext(ctxRetry, analysisQuery).Scan(&field, &analysis, &createdAt)
+			uniqueRetryID := time.Now().UnixNano()
+			retryQuery := fmt.Sprintf(`
+				SELECT ai_suggestion, ai_response, grade, created_at
+				FROM public.cv_analysis
+				WHERE user_id = %d
+				ORDER BY created_at DESC
+				LIMIT 1
+				-- Unique retry query ID: %d
+			`, userID, uniqueRetryID)
+			err = a.DB.QueryRowContext(ctxRetry, retryQuery).Scan(&aiSuggestion, &aiResponse, &grade, &createdAt)
 			if err != nil {
 				if err == sql.ErrNoRows {
 					log.Printf("❌ No CV analysis found for user %d (retry)", userID)
@@ -1835,8 +2461,8 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	
-	log.Printf("✅ Found CV analysis for user %d - Field: %s, Analysis length: %d, Created: %v", 
-		userID, field, len(analysis), createdAt)
+	log.Printf("✅ Found CV analysis for user %d - Grade: %d, Analysis length: %d, Suggestions length: %d, Created: %v", 
+		userID, grade, len(aiResponse), len(aiSuggestion), createdAt)
 
 	
 	var cvText string
@@ -1862,13 +2488,14 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"user_id":     userID,
-		"score":       cvScore,
-		"field":       field,
-		"analysis":    analysis,
-		"cv_text":     cvTextPreview,
-		"created_at":  createdAt.Format(time.RFC3339),
-		"message":     "Latest CV analysis feedback",
+		"user_id":       userID,
+		"grade":         grade,
+		"ai_response":   aiResponse,
+		"ai_suggestion": aiSuggestion,
+		"score":         cvScore,
+		"cv_text":       cvTextPreview,
+		"created_at":    createdAt.Format(time.RFC3339),
+		"message":       "Latest CV analysis feedback",
 	}
 
 	w.Header().Set("Content-Type", "application/json")

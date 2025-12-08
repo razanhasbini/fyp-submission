@@ -183,19 +183,22 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 		username := fmt.Sprintf("user%d", userID)
 		email := fmt.Sprintf("user%d@test.com", userID)
 		name := fmt.Sprintf("User %d", userID)
-		
-		
-		
+		password := "temp_password_123" // Temporary password - user should update via auth flow
+		jobPosition := "Not Specified"
+		jobPositionType := "Not Specified"
 		
 		emailEscaped := strings.ReplaceAll(email, "'", "''")
 		nameEscaped := strings.ReplaceAll(name, "'", "''")
 		usernameEscaped := strings.ReplaceAll(username, "'", "''")
+		passwordEscaped := strings.ReplaceAll(password, "'", "''")
+		jobPositionEscaped := strings.ReplaceAll(jobPosition, "'", "''")
+		jobPositionTypeEscaped := strings.ReplaceAll(jobPositionType, "'", "''")
 		
 		insertQuery := fmt.Sprintf(`
-			INSERT INTO public.users (id, email, name, username, created_at, updated_at)
-			VALUES (%d, '%s', '%s', '%s', NOW(), NOW())
+			INSERT INTO public.users (id, email, name, username, password, job_position, job_position_type, created_at, updated_at)
+			VALUES (%d, '%s', '%s', '%s', '%s', '%s', '%s', NOW(), NOW())
 			ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
-		`, userID, emailEscaped, nameEscaped, usernameEscaped)
+		`, userID, emailEscaped, nameEscaped, usernameEscaped, passwordEscaped, jobPositionEscaped, jobPositionTypeEscaped)
 		
 		_, err = a.DB.ExecContext(ctx, insertQuery)
 		if err != nil {
@@ -203,10 +206,10 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(err.Error(), "column \"username\"") {
 				log.Printf("⚠️ Username column not found, trying without it")
 				insertQuery = fmt.Sprintf(`
-					INSERT INTO public.users (id, email, name, created_at, updated_at)
-					VALUES (%d, '%s', '%s', NOW(), NOW())
+					INSERT INTO public.users (id, email, name, password, job_position, job_position_type, created_at, updated_at)
+					VALUES (%d, '%s', '%s', '%s', '%s', '%s', NOW(), NOW())
 					ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
-				`, userID, emailEscaped, nameEscaped)
+				`, userID, emailEscaped, nameEscaped, passwordEscaped, jobPositionEscaped, jobPositionTypeEscaped)
 				_, err = a.DB.ExecContext(ctx, insertQuery)
 			}
 			if err != nil {
@@ -241,7 +244,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO ai.cv_documents (user_id, text, created_at)
 		VALUES (%d, '%s', NOW())
 		RETURNING id
-		
+		-- Unique doc ID: %d
 	`, userID, textEscaped, uniqueDocID)
 	
 	log.Printf("📝 Inserting CV document for user %d (text length: %d chars)", userID, len(textEscaped))
@@ -266,7 +269,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 				INSERT INTO ai.cv_documents (user_id, text, created_at)
 				VALUES (%d, '%s', NOW())
 				RETURNING id
-				
+				-- Unique doc ID 2: %d
 			`, userID, textEscaped, uniqueDocID2)
 			err = a.DB.QueryRowContext(ctx2, insertQuery2).Scan(&cvID)
 			if err != nil {
@@ -277,7 +280,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 				execQuery := fmt.Sprintf(`
 					INSERT INTO ai.cv_documents (user_id, text, created_at)
 					VALUES (%d, '%s', NOW())
-					
+					-- Unique doc ID 3: %d
 				`, userID, textEscaped, uniqueDocID3)
 				_, execErr := a.DB.ExecContext(ctx2, execQuery)
 				if execErr != nil {
@@ -287,7 +290,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 				}
 				
 				uniqueSelectID := time.Now().UnixNano()
-				selectQuery := fmt.Sprintf(`SELECT id FROM ai.cv_documents WHERE user_id = %d ORDER BY created_at DESC LIMIT 1 `, userID, uniqueSelectID)
+				selectQuery := fmt.Sprintf(`SELECT id FROM ai.cv_documents WHERE user_id = %d ORDER BY created_at DESC LIMIT 1 -- Unique select ID: %d`, userID, uniqueSelectID)
 				err = a.DB.QueryRowContext(ctx2, selectQuery).Scan(&cvID)
 				if err != nil {
 					log.Printf("❌ Failed to get CV ID: %v", err)
@@ -343,7 +346,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 		insertQuery := fmt.Sprintf(`
 			INSERT INTO ai.cv_chunks (cv_id, chunk_text, embedding_json, ord, created_at)
 			VALUES (%d, '%s', '%s'::jsonb, %d, NOW())
-			
+			-- Unique chunk ID: %d
 		`, cvID, chunkEscaped, embJSON, i, uniqueChunkID)
 		
 		if _, err := a.DB.ExecContext(ctx, insertQuery); err != nil {
@@ -355,7 +358,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 				insertQuery2 := fmt.Sprintf(`
 					INSERT INTO ai.cv_chunks (cv_id, chunk_text, embedding_json, ord, created_at)
 					VALUES (%d, '%s', '%s'::jsonb, %d, NOW())
-					
+					-- Unique chunk ID 2: %d
 				`, cvID, chunkEscaped, embJSON, i, uniqueChunkID2)
 				if _, retryErr := a.DB.ExecContext(ctx2, insertQuery2); retryErr != nil {
 					log.Printf("❌ Retry also failed for chunk %d: %v", i, retryErr)
@@ -381,26 +384,48 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 
 	
 	if a.LLM != nil {
-		sysPrompt := `You are an expert AI career analyst and CV reviewer. Analyze the candidate's CV comprehensively and provide:
+		sysPrompt := `You are an expert AI career analyst and CV reviewer with years of experience in recruitment and career counseling. Analyze the candidate's CV comprehensively and provide a detailed, professional assessment.
 
-1. **Field Identification**: The candidate's likely professional field (e.g., Software Engineering, Marketing, Business, Mechanical Engineering, Medicine, etc.)
+1. **Field Identification**: Identify the candidate's likely professional field (e.g., Software Engineering, Marketing, Business, Mechanical Engineering, Medicine, Data Science, etc.)
 
-2. **Comprehensive Analysis**: Provide a detailed analysis that includes:
-   - **Strengths**: Key achievements, skills, and positive aspects (2-3 points)
-   - **Areas for Improvement**: Specific aspects the candidate lacks or can improve (2-3 points)
-   - **CV Structure Recommendations**: How the CV can be structured better (formatting, organization, sections to add/improve)
-   - **Overall Assessment**: Summary of the candidate's profile
+2. **Detailed Comprehensive Analysis**: Provide an in-depth, detailed analysis (15-25 sentences) that includes:
 
-Format your response as a well-structured analysis that helps the candidate understand:
-- What they're doing well
-- What they're missing
-- How to improve their CV structure and content
-- Specific skills or experiences they should add
+   **Opening Overview**: Start with a 3-4 sentence overview of the candidate's professional profile, experience level, and career trajectory. Provide context about their background and positioning in their field. DO NOT list or restate specific projects - only mention them in general terms if relevant to the overview.
+
+   **Strengths Section**: Provide a detailed explanation (4-6 sentences) of the candidate's key strengths, achievements, and positive aspects. Be specific about:
+   - Notable accomplishments and their impact (describe the impact, not the project names)
+   - Strong technical or professional skills
+   - Relevant experience and expertise
+   - Unique selling points that make them stand out
+   - Any impressive certifications or education
+   IMPORTANT: Do NOT list or restate specific project names from the CV. Focus on skills, achievements, and capabilities rather than enumerating projects.
+
+   **Areas for Improvement Section**: Provide a detailed explanation (4-6 sentences) of specific aspects the candidate lacks or can improve. Be constructive and specific about:
+   - Missing skills or experiences that would strengthen their profile
+   - Gaps in their career progression or education
+   - Weaknesses in CV presentation or content
+   - Areas where they could demonstrate more impact or achievement
+   - Suggestions for professional development
+
+   **CV Structure & Formatting Recommendations**: Provide detailed guidance (3-4 sentences) on how the CV can be structured better:
+   - Formatting and visual organization improvements
+   - Section ordering and prioritization
+   - Missing sections that should be added
+   - Content organization and flow
+   - How to make the CV more ATS-friendly
+
+   **Overall Assessment & Career Positioning**: Provide a comprehensive summary (3-4 sentences) that:
+   - Evaluates the candidate's overall profile and market position
+   - Assesses their readiness for their target roles
+   - Provides strategic career advice
+   - Highlights their competitive advantages and areas to focus on
+
+Format your response as a professional, detailed analysis that helps the candidate deeply understand their profile, with specific, actionable insights.
 
 IMPORTANT: Return ONLY valid JSON with this exact structure:
 {
   "field": "Field Name",
-  "analysis": "Comprehensive analysis (5-8 sentences) covering strengths, areas for improvement, CV structure recommendations, and overall assessment. Be specific and actionable."
+  "analysis": "Very detailed and comprehensive analysis (15-25 sentences) with opening overview, detailed strengths explanation, detailed areas for improvement, CV structure recommendations, and overall assessment. Be specific, actionable, and professional. Write in a clear, encouraging tone that helps the candidate understand their profile deeply."
 }`
 
 		resp, err := a.LLM.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
@@ -517,7 +542,6 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 	
 	
 	analysisEscaped := strings.ReplaceAll(analysisText, "'", "''")
-	fieldEscaped := strings.ReplaceAll(fieldText, "'", "''")
 	
 	suggestionText := "Based on your CV analysis, here are key recommendations:\n\n"
 	if strings.Contains(strings.ToLower(result.Analysis), "strength") {
@@ -548,18 +572,19 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 	cvAnalysisInsert := fmt.Sprintf(`
 		INSERT INTO public.cv_analysis (user_id, ai_response, ai_suggestion, grade, created_at, updated_at)
 		VALUES (%d, '%s', '%s', %d, NOW(), NOW())
-		
+		-- Unique query ID: %d
 	`, userID, analysisEscaped, suggestionEscaped, cvGrade, uniqueInsertID)
 	
 	log.Printf("🔍 Executing INSERT query for user %d", userID)
-	result, execErr := a.DB.ExecContext(ctxInsert, cvAnalysisInsert)
+	log.Printf("🔍 Query: %s", cvAnalysisInsert)
+	execResult, execErr := a.DB.ExecContext(ctxInsert, cvAnalysisInsert)
 	insertSuccess = execErr == nil
 	
 	if insertSuccess {
-		rowsAffected, _ := result.RowsAffected()
+		rowsAffected, _ := execResult.RowsAffected()
 		log.Printf("✅ CV analysis stored successfully (rows affected: %d)", rowsAffected)
 		
-		verifyQuery := fmt.Sprintf(`SELECT id, user_id, grade FROM public.cv_analysis WHERE user_id = %d ORDER BY created_at DESC LIMIT 1 `, userID, time.Now().UnixNano())
+		verifyQuery := fmt.Sprintf(`SELECT id, user_id, grade FROM public.cv_analysis WHERE user_id = %d ORDER BY created_at DESC LIMIT 1`, userID)
 		var verifyID, verifyUserID int64
 		var verifyGrade int
 		verifyErr := a.DB.QueryRowContext(ctxInsert, verifyQuery).Scan(&verifyID, &verifyUserID, &verifyGrade)
@@ -580,11 +605,11 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 				retryQuery := fmt.Sprintf(`
 					INSERT INTO public.cv_analysis (user_id, ai_response, ai_suggestion, grade, created_at, updated_at)
 					VALUES (%d, '%s', '%s', %d, NOW(), NOW())
-					
+					-- Unique retry query ID: %d
 				`, userID, analysisEscaped, suggestionEscaped, cvGrade, uniqueRetryID)
-				retryResult, retryErr := a.DB.ExecContext(ctxRetry, retryQuery)
+				retryExecResult, retryErr := a.DB.ExecContext(ctxRetry, retryQuery)
 				if retryErr == nil {
-					rowsAffected, _ := retryResult.RowsAffected()
+					rowsAffected, _ := retryExecResult.RowsAffected()
 					log.Printf("✅ CV analysis stored successfully on retry (rows affected: %d)", rowsAffected)
 					insertSuccess = true
 					execErr = nil
@@ -647,11 +672,12 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 			SET cv_analysis_score = %.2f,
 			    updated_at = NOW()
 			WHERE id = %d
-			
+			-- Unique score update ID: %d
 		`, cvScore, userID, uniqueScoreID)
 		
 		log.Printf("📝 Updating cv_analysis_score to %.2f for user %d", cvScore, userID)
-		result, err := a.DB.ExecContext(ctxScore, updateQuery)
+	log.Printf("🔍 Update query: %s", updateQuery)
+		updateResult, err := a.DB.ExecContext(ctxScore, updateQuery)
 		if err != nil {
 			
 			if strings.Contains(err.Error(), "column \"cv_analysis_score\"") || strings.Contains(err.Error(), "does not exist") {
@@ -661,7 +687,7 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 				
 				log.Printf("🔄 Prepared statement error, retrying score update...")
 				ctx2 := context.Background()
-				result, err = a.DB.ExecContext(ctx2, updateQuery)
+				updateResult, err = a.DB.ExecContext(ctx2, updateQuery)
 				if err != nil {
 					if strings.Contains(err.Error(), "column \"cv_analysis_score\"") {
 						log.Printf("❌ CV analysis score column not found. Score will not be updated.")
@@ -669,14 +695,14 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 						log.Printf("❌ Retry also failed: %v", err)
 					}
 				} else {
-					rowsAffected, _ := result.RowsAffected()
+					rowsAffected, _ := updateResult.RowsAffected()
 					log.Printf("✅ Updated user CV analysis score: %.1f%% (rows affected: %d)", cvScore, rowsAffected)
 				}
 			} else {
 				log.Printf("❌ Failed to update CV analysis score: %v", err)
 			}
 		} else {
-			rowsAffected, _ := result.RowsAffected()
+			rowsAffected, _ := updateResult.RowsAffected()
 			if rowsAffected > 0 {
 				log.Printf("✅ Updated user CV analysis score: %.1f%% (rows affected: %d)", cvScore, rowsAffected)
 			} else {

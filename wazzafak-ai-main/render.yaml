@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: interview-backend
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: USE_MOCK
+        value: "0"
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        value: ""
+      - key: EMBEDDING_MODEL
+        value: "text-embedding-3-small"
+      - key: CHAT_MODEL
+        value: "gpt-4o-mini"
+      - key: EVAL_MODEL
+        value: "gpt-4o"
+      - key: PORT
+        value: "8089"
+    healthCheckPath: /v1/health
+
