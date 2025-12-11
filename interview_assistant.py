@@ -1,7 +1,4 @@
-"""
-Interview AI Assistant
-Tracks eyes and posture using MediaPipe face landmarks and pose detection.
-"""
+
 
 import cv2
 import mediapipe as mp
@@ -13,13 +10,13 @@ class InterviewAssistant:
     """AI assistant that monitors eye contact and posture during interviews."""
     
     def __init__(self):
-        # Initialize MediaPipe solutions
+
         self.mp_face_mesh = mp.solutions.face_mesh
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
         
-        # Face mesh for eye tracking
+
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
@@ -27,24 +24,21 @@ class InterviewAssistant:
             min_tracking_confidence=0.5
         )
         
-        # Pose detection for posture tracking
+        
         self.pose = self.mp_pose.Pose(
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
         
-        # Eye landmarks indices (MediaPipe face mesh - 468 landmarks)
-        # Using 6 key points for EAR calculation: [outer_left, outer_right, top, bottom_left, bottom_right, inner_corner]
-        # Left eye: [33, 133, 159, 145, 158, 153]
-        # Right eye: [362, 263, 386, 374, 387, 380]
+
         self.LEFT_EYE_INDICES = [33, 133, 159, 145, 158, 153]
         self.RIGHT_EYE_INDICES = [362, 263, 386, 374, 387, 380]
         
-        # Key points for eye center/gaze calculation (using eye region landmarks)
+        
         self.LEFT_EYE_CENTER = [33, 133, 157, 158, 159, 160, 161, 246]
         self.RIGHT_EYE_CENTER = [362, 263, 388, 387, 386, 385, 384, 398]
         
-        # Posture tracking variables
+       
         self.posture_history = []
         self.eye_contact_history = []
         
@@ -62,14 +56,13 @@ class InterviewAssistant:
         
         eye_points = np.array(eye_points)
         
-        # Calculate distances for EAR formula
-        # Vertical distances (top to bottom)
+
         vertical_1 = np.linalg.norm(eye_points[1] - eye_points[5])  # p2 to p6
         vertical_2 = np.linalg.norm(eye_points[2] - eye_points[4])  # p3 to p5
-        # Horizontal distance (outer corner to inner corner)
+        
         horizontal = np.linalg.norm(eye_points[0] - eye_points[3])   # p1 to p4
         
-        # EAR formula
+        
         if horizontal == 0:
             return 0.0
         ear = (vertical_1 + vertical_2) / (2.0 * horizontal)
@@ -92,9 +85,9 @@ class InterviewAssistant:
         eye_center = np.mean(eye_center_points, axis=0)
         image_center = np.array([image_shape[1] / 2, image_shape[0] / 2])
         
-        # Calculate offset from center
+       
         offset = eye_center - image_center
-        # Normalize
+      
         normalized_offset = offset / image_center
         
         return normalized_offset[0], normalized_offset[1]  # x, y offsets
@@ -106,27 +99,26 @@ class InterviewAssistant:
         
         landmarks = pose_landmarks.landmark
         
-        # Key points for posture analysis
-        # Shoulders
+       
         left_shoulder = landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
         right_shoulder = landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
         
-        # Spine/back points
+       ts
         left_hip = landmarks[self.mp_pose.PoseLandmark.LEFT_HIP]
         right_hip = landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP]
         
-        # Calculate shoulder alignment
+        
         shoulder_y_diff = abs(left_shoulder.y - right_shoulder.y)
         shoulder_alignment = "aligned" if shoulder_y_diff < 0.05 else "misaligned"
         
-        # Calculate spine angle (shoulder to hip)
+        
         shoulder_center_y = (left_shoulder.y + right_shoulder.y) / 2
         hip_center_y = (left_hip.y + right_hip.y) / 2
         
-        # Calculate forward lean (if shoulders are significantly forward of hips)
+        
         forward_lean = shoulder_center_y - hip_center_y
         
-        # Posture quality assessment
+        
         posture_quality = "good"
         issues = []
         
@@ -160,7 +152,7 @@ class InterviewAssistant:
             "posture": None
         }
         
-        # Draw pose landmarks
+        
         if results_pose.pose_landmarks:
             self.mp_drawing.draw_landmarks(
                 frame,
@@ -169,16 +161,16 @@ class InterviewAssistant:
                 landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style()
             )
             
-            # Analyze posture
+            
             analysis["posture"] = self.analyze_posture(
                 results_pose.pose_landmarks,
                 frame.shape
             )
         
-        # Process face landmarks for eye tracking
+        
         if results_face.multi_face_landmarks:
             for face_landmarks in results_face.multi_face_landmarks:
-                # Draw face mesh
+               
                 self.mp_drawing.draw_landmarks(
                     frame,
                     face_landmarks,
@@ -187,7 +179,7 @@ class InterviewAssistant:
                     self.mp_drawing_styles.get_default_face_mesh_contours_style()
                 )
                 
-                # Calculate eye aspect ratios
+                
                 left_ear = self.calculate_eye_aspect_ratio(
                     face_landmarks,
                     self.LEFT_EYE_INDICES,
@@ -203,7 +195,7 @@ class InterviewAssistant:
                 eye_open = avg_ear > 0.25  # Threshold for eye open/closed
                 analysis["eye_open"] = eye_open
                 
-                # Calculate eye direction (gaze)
+                
                 left_eye_dir = self.calculate_eye_direction(
                     face_landmarks,
                     self.LEFT_EYE_CENTER,

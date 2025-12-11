@@ -579,10 +579,17 @@ func (a *App) handleNextQ(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create context with timeout for the entire request (60 seconds)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	log.Printf("🔍 Getting next question for user %d, domain: %s, difficulty: %s (timeout: 60s)", in.UserID, in.Domain, in.Difficulty)
+
 	
 	q := "next interview question for " + in.Domain
-	qEmb, err := a.embed(r.Context(), []string{q})
+	qEmb, err := a.embed(ctx, []string{q})
 	if err != nil || len(qEmb) == 0 {
+		log.Printf("❌ Embedding error: %v", err)
 		http.Error(w, "embedding error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -599,9 +606,14 @@ func (a *App) handleNextQ(w http.ResponseWriter, r *http.Request) {
 	  LIMIT 200
 	  -- Unique CV query ID: %d`, uniqueCVQueryID)
 	
-	ctx := r.Context()
 	cvRows, err := a.DB.QueryContext(ctx, cvQuery, in.UserID)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("❌ Timeout querying CV chunks for user %d", in.UserID)
+			http.Error(w, "Request timeout - database query took too long", http.StatusRequestTimeout)
+			return
+		}
+		log.Printf("❌ Database error querying CV chunks: %v", err)
 		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -627,6 +639,12 @@ func (a *App) handleNextQ(w http.ResponseWriter, r *http.Request) {
 	
 	kbRows, err := a.DB.QueryContext(ctx, kbQuery, in.Domain)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("❌ Timeout querying KB articles for domain %s", in.Domain)
+			http.Error(w, "Request timeout - database query took too long", http.StatusRequestTimeout)
+			return
+		}
+		log.Printf("❌ Database error querying KB articles: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -650,7 +668,7 @@ func (a *App) handleNextQ(w http.ResponseWriter, r *http.Request) {
 
 	
 	if a.LLM == nil {
-		q := "Based on your background, describe how you would design a simple REST API in " + in.Domain + "."
+		q := "Based on your background, describe how you would manage the department if you were a team lead" + in.Domain + "."
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(nextQResp{Question: q})
 		return
@@ -661,7 +679,7 @@ func (a *App) handleNextQ(w http.ResponseWriter, r *http.Request) {
 Ask ONE question (<=2 sentences). Use CONTEXT if needed. Do not reveal answers.`, in.Domain)
 	user := "CONTEXT:\n" + contextBlock + "\n---\nDifficulty: " + in.Difficulty + "\nReturn exactly one interview question now."
 
-	resp, err := a.LLM.CreateChatCompletion(r.Context(), openai.ChatCompletionRequest{
+	resp, err := a.LLM.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       a.ChatModel,
 		Temperature: 0.3,
 		Messages: []openai.ChatCompletionMessage{
@@ -670,11 +688,27 @@ Ask ONE question (<=2 sentences). Use CONTEXT if needed. Do not reveal answers.`
 		},
 	})
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("❌ Timeout calling LLM for question generation")
+			http.Error(w, "Request timeout - LLM call took too long", http.StatusRequestTimeout)
+			return
+		}
+		log.Printf("❌ LLM error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if len(resp.Choices) == 0 {
+		log.Printf("❌ LLM returned no choices")
+		http.Error(w, "LLM returned no response", http.StatusInternalServerError)
+		return
+	}
 	question := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if question == "" {
+		log.Printf("⚠️ LLM returned empty question, using fallback")
+		question = fmt.Sprintf("Tell me about your experience with %s.", in.Domain)
+	}
 
+	log.Printf("✅ Generated question for user %d: %s", in.UserID, question[:min(50, len(question))])
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(nextQResp{Question: question})
 }
@@ -795,7 +829,7 @@ Return JSON:
 	})
 	
 	if err != nil {
-		log.Printf("⚠️ Evaluation error: %v, using fallback", err)
+		log.Printf(" Evaluation error: %v, using fallback", err)
 		
 		overall := 70.0
 		technicalScore := overall * 0.4
@@ -834,7 +868,7 @@ Return JSON:
 	}
 	
 	if err := json.Unmarshal([]byte(jsonText), &evalData); err != nil {
-		log.Printf("⚠️ Failed to parse evaluation JSON: %v", err)
+		log.Printf(" Failed to parse evaluation JSON: %v", err)
 		
 		overall := 70.0
 		result := map[string]interface{}{
@@ -1049,7 +1083,7 @@ var upgrader = websocket.Upgrader{
 	EnableCompression: true,
 }
 
-// Helper functions for interview logic
+
 func isConfused(msg string) bool {
 	m := strings.ToLower(msg)
 	confusionIndicators := []string{
@@ -1613,7 +1647,7 @@ RULES:
 	return strings.TrimSpace(resp.Choices[0].Message.Content)
 }
 
-// Maybe follow-up
+
 func (a *App) maybeFollowUp(ctx context.Context, st *InterviewState) string {
 	if a.LLM == nil {
 		return ""
@@ -2385,13 +2419,18 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create context with timeout for the entire request (60 seconds)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	log.Printf("🔍 Querying CV feedback for user %d (timeout: 60s)", userID)
+
 	
 	var cvScore float64
 	
 	uniqueScoreID := time.Now().UnixNano()
-	scoreQuery := fmt.Sprintf(`SELECT COALESCE(cv_analysis_score, 0) FROM public.users WHERE id = %d -- Unique query ID: %d`, userID, uniqueScoreID)
-	ctxScore := context.Background()
-	err := a.DB.QueryRowContext(ctxScore, scoreQuery).Scan(&cvScore)
+	scoreQuery := fmt.Sprintf(`SELECT COALESCE(cv_analysis_score, 0) FROM public.users WHERE id = $1 -- Unique query ID: %d`, uniqueScoreID)
+	err := a.DB.QueryRowContext(ctx, scoreQuery, userID).Scan(&cvScore)
 	if err != nil {
 		log.Printf("⚠️ Could not fetch CV score: %v", err)
 		cvScore = 0
@@ -2406,83 +2445,41 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 	analysisQuery := fmt.Sprintf(`
 		SELECT ai_suggestion, ai_response, grade, created_at
 		FROM public.cv_analysis
-		WHERE user_id = %d
+		WHERE user_id = $1
 		ORDER BY created_at DESC
 		LIMIT 1
 		-- Unique query ID: %d
-	`, userID, uniqueAnalysisID)
+	`, uniqueAnalysisID)
 	
-	log.Printf("🔍 Querying CV analysis for user %d", userID)
 	log.Printf("🔍 SQL Query: %s", analysisQuery)
 	
-	ctx := context.Background()
-	err = a.DB.QueryRowContext(ctx, analysisQuery).Scan(&aiSuggestion, &aiResponse, &grade, &createdAt)
+	err = a.DB.QueryRowContext(ctx, analysisQuery, userID).Scan(&aiSuggestion, &aiResponse, &grade, &createdAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			log.Printf("❌ No CV analysis found for user %d in cv_analysis table", userID)
-			
-			checkQuery := fmt.Sprintf(`SELECT COUNT(*) FROM public.cv_analysis`)
-			var totalCount int
-			ctxCheck := context.Background()
-			if checkErr := a.DB.QueryRowContext(ctxCheck, checkQuery).Scan(&totalCount); checkErr == nil {
-				log.Printf("ℹ️ Total CV analyses in table: %d", totalCount)
-			} else {
-				log.Printf("⚠️ Could not check total count: %v", checkErr)
-			}
-			
-			userCheckQuery := fmt.Sprintf(`SELECT COUNT(*) FROM public.cv_analysis WHERE user_id = %d`, userID)
-			var userCount int
-			ctxUserCheck := context.Background()
-			if userCheckErr := a.DB.QueryRowContext(ctxUserCheck, userCheckQuery).Scan(&userCount); userCheckErr == nil {
-				log.Printf("ℹ️ CV analyses for user %d: %d", userID, userCount)
-				if userCount > 0 {
-					log.Printf("⚠️ WARNING: User has %d CV analyses but query returned no rows - possible data issue", userCount)
-					
-					uniqueSimpleID := time.Now().UnixNano()
-					simpleQuery := fmt.Sprintf(`SELECT ai_suggestion, ai_response, grade, created_at FROM public.cv_analysis WHERE user_id = %d ORDER BY created_at DESC LIMIT 1 -- Unique simple query ID: %d`, userID, uniqueSimpleID)
-					if simpleErr := a.DB.QueryRowContext(ctxUserCheck, simpleQuery).Scan(&aiSuggestion, &aiResponse, &grade, &createdAt); simpleErr == nil {
-						log.Printf("✅ Found CV analysis with simpler query!")
-						
-					} else {
-						log.Printf("❌ Simpler query also failed: %v", simpleErr)
-						http.Error(w, "No CV analysis found", http.StatusNotFound)
-						return
-					}
-				} else {
-					http.Error(w, "No CV analysis found", http.StatusNotFound)
-					return
+		if err != nil {
+			if err == sql.ErrNoRows {
+				log.Printf("❌ No CV analysis found for user %d in cv_analysis table", userID)
+				// Return empty response instead of 404 so app can handle gracefully
+				response := map[string]interface{}{
+					"user_id":       userID,
+					"grade":         nil,
+					"ai_response":   nil,
+					"ai_suggestion": nil,
+					"score":         cvScore,
+					"cv_text":       "",
+					"message":       "No CV analysis found. Please upload a CV first.",
 				}
-			} else {
-				log.Printf("⚠️ Could not check user count: %v", userCheckErr)
-				http.Error(w, "No CV analysis found", http.StatusNotFound)
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(response)
 				return
 			}
-		}
-		
-		if strings.Contains(err.Error(), "prepared statement") {
-			log.Printf("🔄 Prepared statement error, retrying with fresh context and unique query...")
-			ctxRetry := context.Background()
-			uniqueRetryID := time.Now().UnixNano()
-			retryQuery := fmt.Sprintf(`
-				SELECT ai_suggestion, ai_response, grade, created_at
-				FROM public.cv_analysis
-				WHERE user_id = %d
-				ORDER BY created_at DESC
-				LIMIT 1
-				-- Unique retry query ID: %d
-			`, userID, uniqueRetryID)
-			err = a.DB.QueryRowContext(ctxRetry, retryQuery).Scan(&aiSuggestion, &aiResponse, &grade, &createdAt)
-			if err != nil {
-				if err == sql.ErrNoRows {
-					log.Printf("❌ No CV analysis found for user %d (retry)", userID)
-					http.Error(w, "No CV analysis found", http.StatusNotFound)
-					return
-				}
-				log.Printf("❌ Error retrieving CV analysis (retry): %v", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			
+			// Check for context timeout
+			if ctx.Err() == context.DeadlineExceeded {
+				log.Printf("❌ Timeout retrieving CV analysis for user %d", userID)
+				http.Error(w, "Request timeout - database query took too long", http.StatusRequestTimeout)
 				return
 			}
-		} else {
+			
 			log.Printf("❌ Error retrieving CV analysis: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -2494,19 +2491,14 @@ func (a *App) handleGetCvFeedback(w http.ResponseWriter, r *http.Request) {
 
 	
 	var cvText string
-	cvTextQuery := fmt.Sprintf(`
-		SELECT text
-		FROM ai.cv_documents
-		WHERE user_id = %d
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, userID)
+	cvTextQuery := `SELECT text FROM ai.cv_documents WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`
 	
-	err = a.DB.QueryRow(cvTextQuery).Scan(&cvText)
+	err = a.DB.QueryRowContext(ctx, cvTextQuery, userID).Scan(&cvText)
 	if err != nil {
-		
+		if err != sql.ErrNoRows {
+			log.Printf("ℹ️ CV text not available: %v", err)
+		}
 		cvText = ""
-		log.Printf("ℹ️ CV text not available: %v", err)
 	}
 
 	

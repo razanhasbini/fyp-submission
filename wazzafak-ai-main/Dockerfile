@@ -11,12 +11,14 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-# Copy dependency files first for better caching
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy source code
+# Copy all files to ensure build context is correct
 COPY . .
+
+# Verify go.mod exists
+RUN test -f go.mod || (echo "ERROR: go.mod not found!" && ls -la && exit 1)
+
+# Download dependencies
+RUN go mod download
 
 # Update go.mod if needed
 RUN go mod tidy

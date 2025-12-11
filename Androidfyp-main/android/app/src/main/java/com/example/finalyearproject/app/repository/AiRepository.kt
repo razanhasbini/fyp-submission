@@ -26,7 +26,11 @@ class AiRepository(private val context: Context) {
     
     // Get service instance dynamically to ensure it uses the latest URL
     private val aiService: AiService
-        get() = AiRetrofitClient.aiService
+        get() {
+            val service = AiRetrofitClient.aiService
+            Log.d(TAG, "Getting AiService, current base URL: ${AiRetrofitClient.getBaseUrl()}")
+            return service
+        }
     
     companion object {
         private const val TAG = "AiRepository"
@@ -84,33 +88,9 @@ class AiRepository(private val context: Context) {
             Log.d(TAG, "Base URL: ${com.example.finalyearproject.app.repository.network.AiRetrofitClient.getBaseUrl()}")
             Log.d(TAG, "File size: ${file.length()} bytes")
             
-            // Test connection first with timeout
-            try {
-                Log.d(TAG, "Testing backend connection...")
-                val healthCheck = withContext(Dispatchers.IO) {
-                    withTimeout(10000) {
-                        aiService.healthCheck()
-                    }
-                }
-                if (!healthCheck.isSuccessful) {
-                    Log.e(TAG, "Health check failed: ${healthCheck.code()} - ${healthCheck.message()}")
-                    file.delete()
-                    return Result.failure(Exception("Cannot connect to backend (HTTP ${healthCheck.code()}). Please check if server is running at ${com.example.finalyearproject.app.repository.network.AiRetrofitClient.getBaseUrl()}"))
-                }
-                Log.d(TAG, "✅ Health check passed")
-            } catch (healthErr: Exception) {
-                Log.e(TAG, "Health check error", healthErr)
-                file.delete()
-                val errorMsg = when {
-                    healthErr.message?.contains("timeout", ignoreCase = true) == true ->
-                        "Connection timeout. Please check if the backend server is running at ${com.example.finalyearproject.app.repository.network.AiRetrofitClient.getBaseUrl()}"
-                    healthErr.message?.contains("connection", ignoreCase = true) == true ->
-                        "Cannot connect to backend. Please ensure the server is running at ${com.example.finalyearproject.app.repository.network.AiRetrofitClient.getBaseUrl()}"
-                    else ->
-                        "Connection error: ${healthErr.message}. Backend URL: ${com.example.finalyearproject.app.repository.network.AiRetrofitClient.getBaseUrl()}"
-                }
-                return Result.failure(Exception(errorMsg))
-            }
+            // Skip health check - proceed directly to upload
+            // The upload will handle connection errors with retry logic
+            Log.d(TAG, "Proceeding with CV upload (health check skipped)")
             
             // Retry logic for connection issues
             var lastError: Exception? = null
@@ -124,7 +104,18 @@ class AiRepository(private val context: Context) {
                         kotlinx.coroutines.delay(2000) // Wait 2 seconds before retry
                     }
                     
-                    val response = aiService.uploadCV(userIdBody, body)
+                    // Upload with extended timeout (CV analysis can take time)
+                    // Note: OkHttpClient already has 120s timeouts, this is just a safety net
+                    val response = try {
+                        withContext(Dispatchers.IO) {
+                            withTimeout(180000) { // 3 minutes timeout for CV upload and analysis
+                                aiService.uploadCV(userIdBody, body)
+                            }
+                        }
+                    } catch (timeoutErr: kotlinx.coroutines.TimeoutCancellationException) {
+                        Log.e(TAG, "Upload timeout after 3 minutes", timeoutErr)
+                        throw Exception("Upload timeout. The CV analysis is taking longer than expected. Please try again or use a smaller file.")
+                    }
                     
                     if (response.isSuccessful && response.body() != null) {
                         val result = response.body()!!
@@ -235,7 +226,7 @@ class AiRepository(private val context: Context) {
             Log.d(TAG, "Backend URL: ${com.example.finalyearproject.app.repository.network.AiRetrofitClient.getBaseUrl()}")
             val request = StartSessionRequest(user_id = userId, major = major)
             val response = withContext(Dispatchers.IO) {
-                withTimeout(15000) {
+                withTimeout(30000) { // 30 seconds for session start
                     aiService.startSession(request)
                 }
             }
@@ -309,7 +300,7 @@ class AiRepository(private val context: Context) {
                 difficulty = difficulty
             )
             val response = withContext(Dispatchers.IO) {
-                withTimeout(15000) {
+                withTimeout(90000) { // 90 seconds - AI question generation can take time (CV loading + LLM calls)
                     aiService.getNextQuestion(request)
                 }
             }
@@ -455,7 +446,7 @@ class AiRepository(private val context: Context) {
         return try {
             Log.d(TAG, "Getting user scores for user: $userId")
             val response = withContext(Dispatchers.IO) {
-                withTimeout(10000) {
+                withTimeout(30000) { // Increased to 30 seconds for database queries
                     aiService.getUserScores(userId)
                 }
             }
@@ -475,6 +466,107 @@ class AiRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error getting user scores", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Get technical feedback for a user
+     */
+    suspend fun getTechnicalFeedback(userId: Long): Result<TechnicalFeedbackResponse> {
+        return try {
+            Log.d(TAG, "Getting technical feedback for user: $userId")
+            val response = withContext(Dispatchers.IO) {
+                withTimeout(30000) {
+                    aiService.getTechnicalFeedback(userId)
+                }
+            }
+            
+            if (response.isSuccessful && response.body() != null) {
+                val result = response.body()!!
+                Log.d(TAG, "✅ Technical feedback retrieved: Score=${result.technical_score}, Feedback length=${result.feedback?.length ?: 0}")
+                Result.success(result)
+            } else {
+                val errorBody = try {
+                    response.errorBody()?.string() ?: "Unknown error"
+                } catch (e: Exception) {
+                    "Error reading response: ${e.message}"
+                }
+                Log.e(TAG, "❌ Get technical feedback failed: HTTP ${response.code()} - $errorBody")
+                Result.failure(Exception("Failed to get technical feedback (HTTP ${response.code()}): $errorBody"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting technical feedback", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Get behavioral feedback for a user
+     */
+    suspend fun getBehavioralFeedback(userId: Long): Result<BehavioralFeedbackResponse> {
+        return try {
+            Log.d(TAG, "Getting behavioral feedback for user: $userId")
+            val response = withContext(Dispatchers.IO) {
+                withTimeout(30000) {
+                    aiService.getBehavioralFeedback(userId)
+                }
+            }
+            
+            if (response.isSuccessful && response.body() != null) {
+                val result = response.body()!!
+                Log.d(TAG, "✅ Behavioral feedback retrieved: Communication=${result.communication_score}, Confidence=${result.confidence_score}, Feedback length=${result.feedback?.length ?: 0}")
+                Result.success(result)
+            } else {
+                val errorBody = try {
+                    response.errorBody()?.string() ?: "Unknown error"
+                } catch (e: Exception) {
+                    "Error reading response: ${e.message}"
+                }
+                Log.e(TAG, "❌ Get behavioral feedback failed: HTTP ${response.code()} - $errorBody")
+                Result.failure(Exception("Failed to get behavioral feedback (HTTP ${response.code()}): $errorBody"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting behavioral feedback", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Get CV feedback for a user
+     * 
+     * @param userId User ID
+     * @return CvFeedbackResponse with analysis and suggestions
+     */
+    suspend fun getCvFeedback(userId: Long): Result<CvFeedbackResponse> {
+        return try {
+            Log.d(TAG, "Getting CV feedback for user: $userId")
+            val response = withContext(Dispatchers.IO) {
+                withTimeout(30000) { // Increased to 30 seconds for database queries
+                    aiService.getCvFeedback(userId)
+                }
+            }
+            
+            if (response.isSuccessful && response.body() != null) {
+                val result = response.body()!!
+                Log.d(TAG, "✅ CV feedback retrieved: Grade=${result.grade}, Response length=${result.ai_response?.length}, Suggestions length=${result.ai_suggestion?.length}")
+                Result.success(result)
+            } else {
+                val errorBody = try {
+                    response.errorBody()?.string() ?: "Unknown error"
+                } catch (e: Exception) {
+                    "Error reading response: ${e.message}"
+                }
+                if (response.code() == 404) {
+                    Log.d(TAG, "No CV feedback found for user: $userId")
+                    Result.failure(Exception("No CV analysis found. Please upload a CV first."))
+                } else {
+                    Log.e(TAG, "❌ Get CV feedback failed: HTTP ${response.code()} - $errorBody")
+                    Result.failure(Exception("Failed to get CV feedback (HTTP ${response.code()}): $errorBody"))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting CV feedback", e)
             Result.failure(e)
         }
     }

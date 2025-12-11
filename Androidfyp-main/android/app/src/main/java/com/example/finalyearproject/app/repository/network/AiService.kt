@@ -43,6 +43,12 @@ interface AiService {
     
     @GET("/v1/user/scores")
     suspend fun getUserScores(@Query("user_id") userId: Long): Response<UserScoresResponse>
+    
+    @GET("/v1/user/feedback/technical")
+    suspend fun getTechnicalFeedback(@Query("user_id") userId: Long): Response<TechnicalFeedbackResponse>
+    
+    @GET("/v1/user/feedback/behavioral")
+    suspend fun getBehavioralFeedback(@Query("user_id") userId: Long): Response<BehavioralFeedbackResponse>
 }
 
 data class HealthCheckResponse(val ok: Boolean)
@@ -142,4 +148,23 @@ data class CvFeedbackResponse(
     val grade: Int?,
     val ai_response: String?,
     val ai_suggestion: String?
+)
+
+data class TechnicalFeedbackResponse(
+    val user_id: Long,
+    val technical_score: Double,
+    val overall_score: Double,
+    val feedback: String?,
+    val created_at: String?,
+    val message: String?
+)
+
+data class BehavioralFeedbackResponse(
+    val user_id: Long,
+    val communication_score: Double,
+    val confidence_score: Double,
+    val overall_score: Double,
+    val feedback: String?,
+    val created_at: String?,
+    val message: String?
 )

@@ -64,6 +64,14 @@ class cvfragment : Fragment() {
 
         // Initially, analyze button is disabled (no file yet)
         btnAnalyzeCv.isEnabled = false
+        
+        // Load existing CV feedback when fragment is created
+        // This will display any previously saved CV analysis
+        viewLifecycleOwner.lifecycleScope.launch {
+            delay(500) // Small delay to ensure view is ready
+            Log.d(TAG, "Loading saved CV feedback on fragment creation...")
+            viewModel.loadCvFeedback()
+        }
 
         // Choose CV button
         btnSelectCvFile.setOnClickListener {
@@ -98,27 +106,40 @@ class cvfragment : Fragment() {
                 progressAnalyzing.visibility = if (state.loading) View.VISIBLE else View.GONE
                 btnAnalyzeCv.isEnabled = !state.loading
 
-                if (state.uploadSuccess) {
+                // Show analysis whenever it's available (from upload or saved feedback)
+                if (state.uploadSuccess || !state.analysisResult.isNullOrBlank()) {
                     layoutAiResponse.visibility = View.VISIBLE
-                    if (state.analysisResult.isNullOrBlank()) {
-                        tvAiSummary.text = "CV analysis completed successfully! Check your profile for details."
-                    } else {
+                    
+                    // Display analysis result
+                    if (!state.analysisResult.isNullOrBlank()) {
                         tvAiSummary.text = state.analysisResult
-                    }
-                    if (state.suggestions.isNullOrBlank()) {
-                        tvAiSuggestions.text = "No specific suggestions provided."
+                        Log.d(TAG, "Displaying analysis: ${state.analysisResult.take(100)}...")
                     } else {
-                        tvAiSuggestions.text = state.suggestions
+                        tvAiSummary.text = "CV analysis completed successfully! Loading feedback..."
                     }
                     
+                    // Display suggestions
+                    if (!state.suggestions.isNullOrBlank()) {
+                        tvAiSuggestions.text = state.suggestions
+                        Log.d(TAG, "Displaying suggestions: ${state.suggestions.take(100)}...")
+                    } else {
+                        tvAiSuggestions.text = "Loading suggestions..."
+                    }
+                    
+                    // Trigger profile refresh to update scores
                     ProfileViewModel.triggerRefresh = true
                     
+                    // Update user scores in background
                     viewLifecycleOwner.lifecycleScope.launch {
                         delay(2000)
-                        val profileResult = com.example.finalyearproject.app.repository.ProfileRepository(requireContext()).getMe()
-                        val userId = profileResult.getOrNull()?.id?.toLongOrNull()
-                        if (userId != null) {
-                            com.example.finalyearproject.app.repository.AiRepository(requireContext()).getUserScores(userId)
+                        try {
+                            val profileResult = com.example.finalyearproject.app.repository.ProfileRepository(requireContext()).getMe()
+                            val userId = profileResult.getOrNull()?.id?.toLongOrNull()
+                            if (userId != null) {
+                                com.example.finalyearproject.app.repository.AiRepository(requireContext()).getUserScores(userId)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error updating user scores", e)
                         }
                     }
                 }
@@ -177,15 +198,22 @@ class cvfragment : Fragment() {
             tvSelectedFileName?.text = displayName
             btnAnalyzeCv.isEnabled = true
 
-            // Persist permission so you can read this URI later (e.g. in ViewModel / upload)
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            // Try to persist permission so you can read this URI later (e.g. in ViewModel / upload)
+            // Note: OpenDocument() may not support persistable permissions for all URIs
+            // If it fails, the URI should still be accessible during the current activity lifecycle
             try {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                 contentResolver.takePersistableUriPermission(uri, flags)
+                Log.d(TAG, "Successfully persisted URI permission")
             } catch (e: SecurityException) {
-                Log.w(TAG, "Could not persist URI permission", e)
+                // URI doesn't support persistable permissions - this is OK, we'll use it immediately
+                Log.d(TAG, "URI doesn't support persistable permissions (this is normal for some file providers)")
+            } catch (e: IllegalArgumentException) {
+                // Invalid flags - log but continue
+                Log.d(TAG, "Could not persist URI permission: ${e.message}")
             } catch (e: Exception) {
-                Log.e(TAG, "Error persisting URI permission", e)
+                // Other errors - log but continue
+                Log.d(TAG, "Error persisting URI permission: ${e.message}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error handling selected file", e)

@@ -40,9 +40,9 @@ object AiRetrofitClient {
                 
                 val client = OkHttpClient.Builder()
                     .addInterceptor(loggingInterceptor)
-                    .connectTimeout(120, TimeUnit.SECONDS)
-                    .readTimeout(120, TimeUnit.SECONDS)
-                    .writeTimeout(120, TimeUnit.SECONDS)
+                    .connectTimeout(180, TimeUnit.SECONDS) // 3 minutes for connection
+                    .readTimeout(300, TimeUnit.SECONDS) // 5 minutes for reading (CV analysis can take time)
+                    .writeTimeout(300, TimeUnit.SECONDS) // 5 minutes for writing (large file uploads)
                     .retryOnConnectionFailure(true)
                     .build()
                 
@@ -59,10 +59,9 @@ object AiRetrofitClient {
     
     val aiService: AiService
         get() {
-            if (_aiService == null) {
-                _aiService = retrofitInstance.create(AiService::class.java)
-                Log.d(TAG, "Created new AiService instance")
-            }
+            // Always create from current retrofit instance to ensure latest base URL
+            _aiService = retrofitInstance.create(AiService::class.java)
+            Log.d(TAG, "Created AiService instance with base URL: $baseUrl")
             return _aiService!!
         }
 }

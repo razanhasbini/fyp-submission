@@ -47,6 +47,9 @@ class Practicefragment : Fragment(), TextToSpeech.OnInitListener {
     private var timerJob: Job? = null
     private var questionCount = 0
     private var hasIntroduction = false
+    private var isAtEndOfInterview = false
+    private var speechRecognitionRetryCount = 0
+    private val MAX_SPEECH_RETRIES = 3
 
     private var tts: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer? = null
@@ -330,12 +333,17 @@ class Practicefragment : Fragment(), TextToSpeech.OnInitListener {
     }
     
     private fun speakConclusion(userId: Long) {
+        isAtEndOfInterview = true
         val conclusion = "Thank you for your time today. We'll be in touch soon. Do you have any questions for us?"
         tvCurrentQuestion?.text = conclusion
         speakQuestion(conclusion) {
             viewLifecycleOwner.lifecycleScope.launch {
                 delay(3000)
-                endInterview()
+                // At end of interview, wait longer and be more patient with speech recognition
+                tvRecordingStatus?.text = "Waiting for your question (or say 'no' to end)..."
+                tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_blue_dark))
+                delay(2000)
+                startListening()
             }
         }
     }
@@ -397,11 +405,19 @@ class Practicefragment : Fragment(), TextToSpeech.OnInitListener {
     }
 
     private fun startListening() {
-        if (isListening || isSpeaking) return
+        if (isListening || isSpeaking) {
+            Log.d(TAG, "Cannot start listening - already listening or speaking")
+            return
+        }
 
         isListening = true
-        tvRecordingStatus?.text = "Listening..."
-        tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_green_dark))
+        if (isAtEndOfInterview) {
+            tvRecordingStatus?.text = "Listening for your question..."
+            tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_blue_dark))
+        } else {
+            tvRecordingStatus?.text = "Listening..."
+            tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_green_dark))
+        }
 
         val speechRecognizer = speechRecognizer ?: run {
             isListening = false
@@ -431,10 +447,75 @@ class Practicefragment : Fragment(), TextToSpeech.OnInitListener {
             }
 
             override fun onError(error: Int) {
-                Log.e(TAG, "Speech recognition error: $error")
+                val errorName = when (error) {
+                    android.speech.SpeechRecognizer.ERROR_AUDIO -> "ERROR_AUDIO"
+                    android.speech.SpeechRecognizer.ERROR_CLIENT -> "ERROR_CLIENT"
+                    android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "ERROR_INSUFFICIENT_PERMISSIONS"
+                    android.speech.SpeechRecognizer.ERROR_NETWORK -> "ERROR_NETWORK"
+                    android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"
+                    android.speech.SpeechRecognizer.ERROR_NO_MATCH -> "ERROR_NO_MATCH"
+                    android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "ERROR_RECOGNIZER_BUSY"
+                    android.speech.SpeechRecognizer.ERROR_SERVER -> "ERROR_SERVER"
+                    android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "ERROR_SPEECH_TIMEOUT"
+                    else -> "ERROR_UNKNOWN($error)"
+                }
+                Log.e(TAG, "Speech recognition error: $errorName ($error)")
                 isListening = false
-                tvRecordingStatus?.text = "Error listening"
-                tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_red_dark))
+                
+                // Recoverable errors - retry automatically
+                val isRecoverable = error == android.speech.SpeechRecognizer.ERROR_NO_MATCH ||
+                        error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                        error == android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                        error == android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT
+                
+                if (isRecoverable && speechRecognitionRetryCount < MAX_SPEECH_RETRIES && isInterviewActive) {
+                    speechRecognitionRetryCount++
+                    Log.d(TAG, "Retrying speech recognition (attempt $speechRecognitionRetryCount/$MAX_SPEECH_RETRIES)")
+                    
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        delay(1000) // Wait 1 second before retrying
+                        if (isInterviewActive && !isSpeaking) {
+                            if (isAtEndOfInterview) {
+                                tvRecordingStatus?.text = "Still listening... (say 'no' if you're done)"
+                                tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_blue_dark))
+                            } else {
+                                tvRecordingStatus?.text = "Listening again..."
+                                tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_green_dark))
+                            }
+                            startListening()
+                        }
+                    }
+                } else {
+                    // Non-recoverable error or max retries reached
+                    if (isAtEndOfInterview) {
+                        // At end of interview, be more graceful - don't show error, just wait
+                        Log.d(TAG, "At end of interview - waiting patiently for user input")
+                        tvRecordingStatus?.text = "Waiting for your question..."
+                        tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_blue_dark))
+                        
+                        // Retry one more time after a longer delay
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            delay(3000)
+                            if (isInterviewActive && !isSpeaking && speechRecognitionRetryCount < MAX_SPEECH_RETRIES + 2) {
+                                speechRecognitionRetryCount++
+                                Log.d(TAG, "Final retry for end-of-interview (attempt $speechRecognitionRetryCount)")
+                                startListening()
+                            } else if (!isInterviewActive) {
+                                // Interview ended, don't retry
+                                return@launch
+                            } else {
+                                // Max retries reached at end of interview - give option to end
+                                tvRecordingStatus?.text = "Say 'no' or 'that's all' to end, or tap End Session"
+                                tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_orange_dark))
+                            }
+                        }
+                    } else {
+                        // Regular interview error
+                        tvRecordingStatus?.text = "Error listening"
+                        tvRecordingStatus?.setTextColor(ContextCompat.getColor(requireContext(), android.R.color.holo_red_dark))
+                        speechRecognitionRetryCount = 0 // Reset retry count
+                    }
+                }
             }
 
             override fun onResults(results: Bundle?) {
@@ -442,6 +523,19 @@ class Practicefragment : Fragment(), TextToSpeech.OnInitListener {
                 val answer = matches?.get(0) ?: ""
                 Log.d(TAG, "Recognized: $answer")
                 isListening = false
+                speechRecognitionRetryCount = 0 // Reset retry count on success
+                
+                // At end of interview, check if user said "no" or similar to end
+                if (isAtEndOfInterview) {
+                    val answerLower = answer.lowercase()
+                    val endingPhrases = listOf("no", "that's all", "that's it", "nothing else", "no more", "no thanks", "i'm good", "all set", "nothing", "nope", "no questions")
+                    if (endingPhrases.any { answerLower.contains(it) }) {
+                        Log.d(TAG, "User indicated they're done - ending interview")
+                        endInterview()
+                        return
+                    }
+                }
+                
                 processAnswer(answer)
             }
 
@@ -562,6 +656,8 @@ class Practicefragment : Fragment(), TextToSpeech.OnInitListener {
         isInterviewActive = false
         questionCount = 0
         hasIntroduction = false
+        isAtEndOfInterview = false
+        speechRecognitionRetryCount = 0
         sessionId = null
         startTime = 0
         timerJob?.cancel()

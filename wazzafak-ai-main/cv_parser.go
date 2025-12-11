@@ -150,11 +150,14 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 	
 	
 	
-	ctx := context.Background()
+	// Use request context with timeout for database operations
+	dbCtx, dbCancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer dbCancel()
+	
 	var userExists bool
 	
 	query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM public.users WHERE id = %d)`, userID)
-	err = a.DB.QueryRowContext(ctx, query).Scan(&userExists)
+	err = a.DB.QueryRowContext(dbCtx, query).Scan(&userExists)
 	if err != nil {
 		log.Printf("⚠️ Error checking user existence: %v", err)
 		
@@ -167,11 +170,11 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 		
 		var seqName string
 		
-		err = a.DB.QueryRowContext(ctx, `SELECT pg_get_serial_sequence('public.users', 'id')`).Scan(&seqName)
+		err = a.DB.QueryRowContext(dbCtx, `SELECT pg_get_serial_sequence('public.users', 'id')`).Scan(&seqName)
 		if err == nil && seqName != "" {
 			
 			seqQuery := fmt.Sprintf(`SELECT setval('%s', GREATEST(COALESCE((SELECT MAX(id) FROM public.users), 0), %d), true)`, seqName, userID)
-			_, err = a.DB.ExecContext(ctx, seqQuery)
+			_, err = a.DB.ExecContext(dbCtx, seqQuery)
 			if err != nil {
 				log.Printf("⚠️ Failed to set sequence: %v", err)
 			}
@@ -200,7 +203,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 			ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
 		`, userID, emailEscaped, nameEscaped, usernameEscaped, passwordEscaped, jobPositionEscaped, jobPositionTypeEscaped)
 		
-		_, err = a.DB.ExecContext(ctx, insertQuery)
+		_, err = a.DB.ExecContext(dbCtx, insertQuery)
 		if err != nil {
 			
 			if strings.Contains(err.Error(), "column \"username\"") {
@@ -210,7 +213,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 					VALUES (%d, '%s', '%s', '%s', '%s', '%s', NOW(), NOW())
 					ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
 				`, userID, emailEscaped, nameEscaped, passwordEscaped, jobPositionEscaped, jobPositionTypeEscaped)
-				_, err = a.DB.ExecContext(ctx, insertQuery)
+				_, err = a.DB.ExecContext(dbCtx, insertQuery)
 			}
 			if err != nil {
 				log.Printf("⚠️ Failed to create user: %v", err)
@@ -248,7 +251,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 	`, userID, textEscaped, uniqueDocID)
 	
 	log.Printf("📝 Inserting CV document for user %d (text length: %d chars)", userID, len(textEscaped))
-	err = a.DB.QueryRowContext(ctx, insertQuery).Scan(&cvID)
+	err = a.DB.QueryRowContext(dbCtx, insertQuery).Scan(&cvID)
 
 	if err != nil {
 		log.Printf("❌ Failed to insert CV document: %v", err)
@@ -263,7 +266,8 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 		} else if strings.Contains(err.Error(), "prepared statement") {
 			
 			log.Printf("⚠️ Prepared statement cache issue, retrying with NEW query string...")
-			ctx2 := context.Background()
+			ctx2, cancel2 := context.WithTimeout(r.Context(), 30*time.Second)
+			defer cancel2()
 			uniqueDocID2 := time.Now().UnixNano()
 			insertQuery2 := fmt.Sprintf(`
 				INSERT INTO ai.cv_documents (user_id, text, created_at)
@@ -282,7 +286,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 					VALUES (%d, '%s', NOW())
 					-- Unique doc ID 3: %d
 				`, userID, textEscaped, uniqueDocID3)
-				_, execErr := a.DB.ExecContext(ctx2, execQuery)
+				_, execErr := a.DB.ExecContext(dbCtx, execQuery)
 				if execErr != nil {
 					log.Printf("❌ Alternative approach also failed: %v", execErr)
 					http.Error(w, fmt.Sprintf("Database error inserting CV: %v. Please check backend logs.", execErr), http.StatusInternalServerError)
@@ -291,7 +295,7 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 				
 				uniqueSelectID := time.Now().UnixNano()
 				selectQuery := fmt.Sprintf(`SELECT id FROM ai.cv_documents WHERE user_id = %d ORDER BY created_at DESC LIMIT 1 -- Unique select ID: %d`, userID, uniqueSelectID)
-				err = a.DB.QueryRowContext(ctx2, selectQuery).Scan(&cvID)
+				err = a.DB.QueryRowContext(dbCtx, selectQuery).Scan(&cvID)
 				if err != nil {
 					log.Printf("❌ Failed to get CV ID: %v", err)
 					http.Error(w, fmt.Sprintf("Database error retrieving CV ID: %v. Please check backend logs.", err), http.StatusInternalServerError)
@@ -312,7 +316,8 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 	log.Printf("📊 Split CV into %d chunks", len(chunks))
 
 	
-	embedCtx, embedCancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	// Increase embedding timeout to 3 minutes for large CVs
+	embedCtx, embedCancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer embedCancel()
 	embeddings, err := a.embed(embedCtx, chunks)
 	if err != nil {
@@ -323,7 +328,10 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 
 	
 	
-	ctx = context.Background()
+	// Use request context for chunk insertion
+	chunkCtx, chunkCancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer chunkCancel()
+	
 	for i, chunk := range chunks {
 		var embJSON string
 		if embeddings[i] != nil {
@@ -349,11 +357,12 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 			-- Unique chunk ID: %d
 		`, cvID, chunkEscaped, embJSON, i, uniqueChunkID)
 		
-		if _, err := a.DB.ExecContext(ctx, insertQuery); err != nil {
+		if _, err := a.DB.ExecContext(chunkCtx, insertQuery); err != nil {
 			log.Printf(" Failed to insert chunk %d: %v", i, err)
 			
 			if strings.Contains(err.Error(), "prepared statement") {
-				ctx2 := context.Background()
+				ctx2, cancel2 := context.WithTimeout(r.Context(), 30*time.Second)
+				defer cancel2()
 				uniqueChunkID2 := time.Now().UnixNano() + int64(i) + 1000000
 				insertQuery2 := fmt.Sprintf(`
 					INSERT INTO ai.cv_chunks (cv_id, chunk_text, embedding_json, ord, created_at)
@@ -374,8 +383,9 @@ func (a *App) handleUploadCV(w http.ResponseWriter, r *http.Request) {
 	log.Printf("✅ Stored %d chunks for CV ID %d", len(chunks), cvID)
 
 	
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	// Use request context with extended timeout for AI analysis (CV analysis can take time)
+	aiCtx, aiCancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer aiCancel()
 
 	var result struct {
 		Field    string `json:"field"`
@@ -428,7 +438,7 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
   "analysis": "Very detailed and comprehensive analysis (15-25 sentences) with opening overview, detailed strengths explanation, detailed areas for improvement, CV structure recommendations, and overall assessment. Be specific, actionable, and professional. Write in a clear, encouraging tone that helps the candidate understand their profile deeply."
 }`
 
-		resp, err := a.LLM.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+		resp, err := a.LLM.CreateChatCompletion(aiCtx, openai.ChatCompletionRequest{
 			Model:       a.ChatModel,
 			Temperature: 0.3,
 			Messages: []openai.ChatCompletionMessage{
@@ -506,7 +516,8 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 		)
 	`)
 	var tableExists bool
-	ctxCheck := context.Background()
+	ctxCheck, cancelCheck := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancelCheck()
 	if err := a.DB.QueryRowContext(ctxCheck, tableCheckQuery).Scan(&tableExists); err != nil {
 		log.Printf("⚠️ Could not verify table existence: %v", err)
 		tableExists = true
@@ -564,7 +575,8 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 	log.Printf("📝 Storing CV analysis for user %d", userID)
 	log.Printf("📊 Analysis length: %d chars, Suggestion length: %d chars, Grade: %d", len(analysisEscaped), len(suggestionEscaped), cvGrade)
 	
-	ctxInsert := context.Background()
+	ctxInsert, cancelInsert := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancelInsert()
 	var insertSuccess bool
 	var execErr error
 	
@@ -600,7 +612,8 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 			
 			if strings.Contains(execErr.Error(), "prepared statement") {
 				log.Printf("🔄 Prepared statement error detected, retrying with fresh context...")
-				ctxRetry := context.Background()
+				ctxRetry, cancelRetry := context.WithTimeout(r.Context(), 30*time.Second)
+				defer cancelRetry()
 				uniqueRetryID := time.Now().UnixNano()
 				retryQuery := fmt.Sprintf(`
 					INSERT INTO public.cv_analysis (user_id, ai_response, ai_suggestion, grade, created_at, updated_at)
@@ -654,7 +667,8 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 			END $$;
 		`)
 		
-		ctxScore := context.Background()
+		ctxScore, cancelScore := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancelScore()
 		_, err = a.DB.ExecContext(ctxScore, ensureColumnQuery)
 		if err != nil {
 			log.Printf("⚠️ Could not ensure cv_analysis_score column exists: %v", err)
@@ -686,7 +700,8 @@ IMPORTANT: Return ONLY valid JSON with this exact structure:
 			} else if strings.Contains(err.Error(), "prepared statement") {
 				
 				log.Printf("🔄 Prepared statement error, retrying score update...")
-				ctx2 := context.Background()
+				ctx2, cancel2 := context.WithTimeout(r.Context(), 30*time.Second)
+				defer cancel2()
 				updateResult, err = a.DB.ExecContext(ctx2, updateQuery)
 				if err != nil {
 					if strings.Contains(err.Error(), "column \"cv_analysis_score\"") {
