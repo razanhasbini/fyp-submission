@@ -26,10 +26,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("release.keystore")
-            storePassword = "android123"
+            storeFile = file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "release.keystore")
+            storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: ""
             keyAlias = "release"
-            keyPassword = "android123"
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: ""
         }
     }
 

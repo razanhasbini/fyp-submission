@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"os"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -12,14 +13,10 @@ var DB *gorm.DB
 
 // Connect initializes the GORM connection to Supabase PostgreSQL
 func Connect() error {
-	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%d sslmode=require",
-		"aws-0-eu-north-1.pooler.supabase.com",
-		"postgres.npeusanizvcyjwsgbhfn",
-		"Hamoudi123?",
-		"postgres",
-		6543,
-	)
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		return fmt.Errorf("DATABASE_URL is not set (see backend .env.example)")
+	}
 
 	var err error
 	DB, err = gorm.Open(postgres.New(postgres.Config{
@@ -33,6 +30,6 @@ func Connect() error {
 		return fmt.Errorf("failed to connect to DB: %w", err)
 	}
 
-	fmt.Println("✅ Successfully connected to Supabase PostgreSQL using GORM")
+	fmt.Println("✅ Successfully connected to PostgreSQL using GORM")
 	return nil
 }

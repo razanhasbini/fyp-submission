@@ -1,0 +1,5 @@
+
+# Signing keys and local env
+*.keystore
+*.jks
+.env

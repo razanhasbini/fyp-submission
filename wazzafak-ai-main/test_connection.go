@@ -130,7 +130,7 @@ func main() {
 		fmt.Println("2. Verify Password:")
 		fmt.Println("   - Get password from: Supabase Dashboard > Settings > Database")
 		fmt.Println("   - URL-encode special characters (? → %3F, @ → %40)")
-		fmt.Println("   - Example: 'Hamoudi123?' becomes 'Hamoudi123%3F'")
+		fmt.Println("   - Example: '[YOUR_SUPABASE_DB_PASSWORD]' becomes '[YOUR_SUPABASE_DB_PASSWORD]'")
 		fmt.Println()
 		fmt.Println("3. Check Network/Firewall:")
 		fmt.Println("   - Ensure port 6543 (pooler) or 5432 (direct) is not blocked")
